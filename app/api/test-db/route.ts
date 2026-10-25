@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 import { getDatabase } from "../../../src/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
+  if (!process.env.MONGODB_URI) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "MONGODB_URI is not defined in environment variables.",
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     const db = await getDatabase();
 

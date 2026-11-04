@@ -182,9 +182,39 @@ function storeAuth(user: { user_id: string; email: string; name: string; is_staf
     localStorage.setItem("inkstone_access", result.tokens.access);
     localStorage.setItem("inkstone_refresh", result.tokens.refresh);
     localStorage.setItem("inkstone_user", JSON.stringify(result.user));
+
+    // Store in cookie as well so Next.js middleware and server routes can verify authentication
+    document.cookie = `inkstone_access=${result.tokens.access}; path=/; max-age=604800; SameSite=Lax`;
+    document.cookie = `inkstone_is_staff=${user.is_staff ? "true" : "false"}; path=/; max-age=604800; SameSite=Lax`;
+
     window.dispatchEvent(new Event("inkstone-auth-change"));
   }
   return result;
+}
+
+export function isLoggedIn(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(localStorage.getItem("inkstone_access"));
+}
+
+export function isStaffUser(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const user = JSON.parse(localStorage.getItem("inkstone_user") || "{}");
+    return user?.is_staff === true;
+  } catch {
+    return false;
+  }
+}
+
+export function getCurrentUser(): AdminUser | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("inkstone_user");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Authentication ───────────────────────────────────────────────────────────
@@ -321,13 +351,23 @@ export function logout(): void {
     localStorage.removeItem("inkstone_access");
     localStorage.removeItem("inkstone_refresh");
     localStorage.removeItem("inkstone_user");
+    localStorage.removeItem("inkstone_local_cart");
+    localStorage.removeItem("inkstone_local_wishlist");
+
+    // Clear authentication cookies
+    document.cookie = "inkstone_access=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "inkstone_is_staff=; path=/; max-age=0; SameSite=Lax";
+
     window.dispatchEvent(new Event("inkstone-auth-change"));
+    window.dispatchEvent(new Event("inkstone-cart-change"));
+    window.dispatchEvent(new Event("inkstone-wishlist-change"));
   }
 }
 
 // ── Local wishlist & cart ────────────────────────────────────────────────────
 export function getLocalWishlist(): string[] {
   if (typeof window === "undefined") return [];
+  if (!isLoggedIn()) return [];
   try {
     return JSON.parse(localStorage.getItem("inkstone_local_wishlist") || "[]");
   } catch {
@@ -337,6 +377,7 @@ export function getLocalWishlist(): string[] {
 
 export function toggleLocalWishlist(productId: string): boolean {
   if (typeof window === "undefined") return false;
+  if (!isLoggedIn()) return false;
   const list = getLocalWishlist();
   const exists = list.includes(productId);
   const updated = exists ? list.filter((id) => id !== productId) : [...list, productId];
@@ -351,6 +392,7 @@ export function getProductPrice(product: Product): number {
 
 export function getLocalCart(): LocalCartItem[] {
   if (typeof window === "undefined") return [];
+  if (!isLoggedIn()) return [];
   try {
     return JSON.parse(localStorage.getItem("inkstone_local_cart") || "[]");
   } catch {
@@ -370,6 +412,11 @@ export function notifyCartChanged() {
 
 export function addToLocalCart(product: Product, quantity = 1) {
   if (typeof window === "undefined") return;
+  // Security guard: cart items CANNOT be added if user is not logged in
+  if (!isLoggedIn()) {
+    console.warn("[Cart Security] Blocked adding item to cart: user is not logged in.");
+    return;
+  }
   const cart = getLocalCart();
   const index = cart.findIndex((i) => i.product.id === product.id);
   if (index >= 0) {
@@ -930,6 +977,9 @@ export const api = {
   },
 
   addToCart: async (product_id: string, quantity = 1): Promise<CartItem> => {
+    if (!isLoggedIn()) {
+      throw new Error("Please log in to add items to your cart.");
+    }
     const uid = getCurrentUserId();
     const products = await api.getProducts();
     const product = products.find((p) => p.id === product_id);

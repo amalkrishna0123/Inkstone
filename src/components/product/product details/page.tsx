@@ -78,19 +78,19 @@ export default function ProductDetail() {
   async function handleToggleWishlist(product: Product, e: React.MouseEvent) {
     e.stopPropagation();
     const isLogged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
-    if (isLogged) {
-      try {
-        const res = await api.toggleWishlist(product.id);
-        if (res.status === "added") {
-          setWishlistIds((prev) => [...prev, product.id]);
-        } else {
-          setWishlistIds((prev) => prev.filter((id) => id !== product.id));
-        }
-      } catch {
-        const added = toggleLocalWishlist(product.id);
-        setWishlistIds((prev) => (added ? [...prev, product.id] : prev.filter((id) => id !== product.id)));
+    if (!isLogged) {
+      router.push(`/login?redirect=${encodeURIComponent("/product")}`);
+      return;
+    }
+
+    try {
+      const res = await api.toggleWishlist(product.id);
+      if (res.status === "added") {
+        setWishlistIds((prev) => [...prev, product.id]);
+      } else {
+        setWishlistIds((prev) => prev.filter((id) => id !== product.id));
       }
-    } else {
+    } catch {
       const added = toggleLocalWishlist(product.id);
       setWishlistIds((prev) => (added ? [...prev, product.id] : prev.filter((id) => id !== product.id)));
     }
@@ -99,13 +99,14 @@ export default function ProductDetail() {
   async function handleQuickAddToCart(product: Product, e: React.MouseEvent) {
     e.stopPropagation();
     const isLogged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
-    if (isLogged) {
-      try {
-        await api.addToCart(product.id, 1);
-      } catch {
-        addToLocalCart(product, 1);
-      }
-    } else {
+    if (!isLogged) {
+      router.push(`/login?redirect=${encodeURIComponent("/product")}`);
+      return;
+    }
+
+    try {
+      await api.addToCart(product.id, 1);
+    } catch {
       addToLocalCart(product, 1);
     }
     setCartSuccessId(product.id);
@@ -113,12 +114,15 @@ export default function ProductDetail() {
   }
 
   function buyNow(product: Product) {
-    sessionStorage.setItem("crystal_checkout_product", JSON.stringify(product));
-    if (product.product_type === "ready_stock") {
-      router.push("/checkout");
-    } else {
-      router.push(`/product/${product.id}/attachment`);
+    const isLogged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
+    const targetUrl = product.product_type === "ready_stock" ? "/checkout" : `/product/${product.id}/attachment`;
+    if (!isLogged) {
+      router.push(`/login?redirect=${encodeURIComponent(targetUrl)}`);
+      return;
     }
+
+    sessionStorage.setItem("crystal_checkout_product", JSON.stringify(product));
+    router.push(targetUrl);
   }
 
   const customProducts = products.filter((p) => !p.product_type || p.product_type === "custom");

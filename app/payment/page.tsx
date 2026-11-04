@@ -33,6 +33,13 @@ export default function PaymentPage() {
   const [statusMsg, setStatusMsg] = useState("");
 
   useEffect(() => {
+    // Security check: user must be logged in to access payment
+    const isLogged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
+    if (!isLogged) {
+      router.replace("/login?redirect=/payment");
+      return;
+    }
+
     const storedProduct = sessionStorage.getItem("crystal_checkout_product");
     if (storedProduct) {
       try {

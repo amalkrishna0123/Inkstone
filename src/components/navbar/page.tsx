@@ -284,11 +284,21 @@ export default function Navbar() {
 
   function handleDesktopNavigate(href: string) {
     setIsProfileOpen(false);
+    if (!user && (href.startsWith("/dashboard") || href.startsWith("/admin") || href.startsWith("/checkout"))) {
+      navigate(`/login?redirect=${encodeURIComponent(href)}`);
+      return;
+    }
     navigate(href);
   }
 
   function handleMobileNavigate(href: string) {
-    closeMobileMenu(() => navigate(href));
+    closeMobileMenu(() => {
+      if (!user && (href.startsWith("/dashboard") || href.startsWith("/admin") || href.startsWith("/checkout"))) {
+        navigate(`/login?redirect=${encodeURIComponent(href)}`);
+        return;
+      }
+      navigate(href);
+    });
   }
 
   function handleDesktopLogout() {

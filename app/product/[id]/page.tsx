@@ -177,15 +177,15 @@ export default function ProductDetailPage() {
   async function handleToggleWishlist() {
     if (!product) return;
     const isLogged = Boolean(localStorage.getItem("inkstone_access"));
-    if (isLogged) {
-      try {
-        const res = await api.toggleWishlist(product.id);
-        setIsWishlisted(res.status === "added");
-      } catch {
-        const added = toggleLocalWishlist(product.id);
-        setIsWishlisted(added);
-      }
-    } else {
+    if (!isLogged) {
+      router.push(`/login?redirect=${encodeURIComponent(`/product/${productId}`)}`);
+      return;
+    }
+
+    try {
+      const res = await api.toggleWishlist(product.id);
+      setIsWishlisted(res.status === "added");
+    } catch {
       const added = toggleLocalWishlist(product.id);
       setIsWishlisted(added);
     }
@@ -193,15 +193,16 @@ export default function ProductDetailPage() {
 
   async function handleAddToCart() {
     if (!product || product.stock === 0) return;
-    setCartAdding(true);
     const isLogged = Boolean(localStorage.getItem("inkstone_access"));
-    if (isLogged) {
-      try {
-        await api.addToCart(product.id, qty);
-      } catch {
-        addToLocalCart(product, qty);
-      }
-    } else {
+    if (!isLogged) {
+      router.push(`/login?redirect=${encodeURIComponent(`/product/${productId}`)}`);
+      return;
+    }
+
+    setCartAdding(true);
+    try {
+      await api.addToCart(product.id, qty);
+    } catch {
       addToLocalCart(product, qty);
     }
     setCartAdding(false);
@@ -219,13 +220,16 @@ export default function ProductDetailPage() {
 
   function buyNow() {
     if (!product) return;
+    const isLogged = Boolean(localStorage.getItem("inkstone_access"));
+    const targetUrl = product.product_type === "ready_stock" ? "/checkout" : `/product/${product.id}/attachment`;
+    if (!isLogged) {
+      router.push(`/login?redirect=${encodeURIComponent(targetUrl)}`);
+      return;
+    }
+
     handleAddToCart();
     sessionStorage.setItem("crystal_checkout_product", JSON.stringify(product));
-    if (product.product_type === "ready_stock") {
-      router.push("/checkout");
-    } else {
-      router.push(`/product/${product.id}/attachment`);
-    }
+    router.push(targetUrl);
   }
 
   function scrollCarousel(dir: "left" | "right") {

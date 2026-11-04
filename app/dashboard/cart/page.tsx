@@ -51,25 +51,27 @@ export default function CartPage() {
 
   async function loadCart() {
     setLoading(true);
-    if (isLogged) {
-      try {
-        const data: CartItem[] = await api.getCart();
-        setItems(
-          data.map((item) => ({
-            id: item.id,
-            product: item.product,
-            quantity: item.quantity,
-            isLocal: false,
-          }))
-        );
-        setLoading(false);
-        return;
-      } catch {
-        // Fall through to local cart
-      }
+    if (!isLogged) {
+      router.replace("/login?redirect=/dashboard/cart");
+      return;
     }
 
-    // Guest local cart
+    try {
+      const data: CartItem[] = await api.getCart();
+      setItems(
+        data.map((item) => ({
+          id: item.id,
+          product: item.product,
+          quantity: item.quantity,
+          isLocal: false,
+        }))
+      );
+      setLoading(false);
+      return;
+    } catch {
+      // Fall through to local cart if user has local items
+    }
+
     const local: LocalCartItem[] = getLocalCart();
     setItems(
       local.map((item) => ({

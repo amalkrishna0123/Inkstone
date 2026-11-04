@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { googleLogin, login } from "@/src/lib/inkstone-api";
 
 // ── Google "G" logo (inline SVG — no external icon lib needed, zero overhead) ──
@@ -30,19 +30,23 @@ function GoogleIcon({ className = "w-5 h-5" }: { className?: string }) {
 
 export default function Login() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
+  const errorParam = searchParams.get("error");
+
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(errorParam || "");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     if (localStorage.getItem("inkstone_access")) {
-      router.replace("/");
+      router.replace(redirectUrl);
     }
-  }, [router]);
+  }, [router, redirectUrl]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -50,7 +54,7 @@ export default function Login() {
     setError("");
     try {
       await login(email, password);
-      router.push("/");
+      router.push(redirectUrl);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to sign in");
     } finally {
@@ -63,7 +67,7 @@ export default function Login() {
     setError("");
     try {
       await googleLogin();
-      router.push("/");
+      router.push(redirectUrl);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to sign in with Google");
     } finally {

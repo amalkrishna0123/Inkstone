@@ -77,11 +77,14 @@ export default function CheckoutPage() {
       setAttachmentUrl(storedAttachment);
     }
 
-    // 3. Check login and fetch saved addresses
+    // 3. Security check: User MUST be logged in to access checkout
     const logged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
     setIsLoggedIn(logged);
 
-    if (logged) {
+    if (!logged) {
+      router.replace("/login?redirect=/checkout");
+      return;
+    }
       const userStr = localStorage.getItem("inkstone_user");
       if (userStr) {
         try {
@@ -114,7 +117,6 @@ export default function CheckoutPage() {
           }
         })
         .catch(() => {});
-    }
 
     // 4. Restore existing coupon if previously applied
     const storedCoupon = sessionStorage.getItem("crystal_checkout_coupon");

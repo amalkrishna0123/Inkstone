@@ -1,13 +1,12 @@
-import Login from "@/src/components/auth/login/page"
+import { Suspense } from "react";
+import Login from "@/src/components/auth/login/page";
 
 const LoginPage = () => {
-    return(
-        <div>
-            <section>
-                <Login/>
-            </section>
-        </div>
-    )
-}
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black" />}>
+      <Login />
+    </Suspense>
+  );
+};
 
-export default LoginPage
+export default LoginPage;

@@ -18,17 +18,22 @@ export default function CartPulseButton() {
     let isMounted = true;
 
     async function refreshCartCount() {
-      let nextCount = 0;
       const isLoggedIn = Boolean(localStorage.getItem("inkstone_access"));
 
-      if (isLoggedIn) {
-        try {
-          const items = await api.getCart();
-          nextCount = items.reduce((sum, item) => sum + item.quantity, 0);
-        } catch {
-          nextCount = getLocalCart().reduce((sum, item) => sum + item.quantity, 0);
-        }
-      } else {
+      if (!isLoggedIn) {
+        if (!isMounted) return;
+        setItemCount(0);
+        setVisible(false);
+        localStorage.removeItem(CART_PULSE_VISIBLE_KEY);
+        localStorage.removeItem(CART_PULSE_COUNT_KEY);
+        return;
+      }
+
+      let nextCount = 0;
+      try {
+        const items = await api.getCart();
+        nextCount = items.reduce((sum, item) => sum + item.quantity, 0);
+      } catch {
         nextCount = getLocalCart().reduce((sum, item) => sum + item.quantity, 0);
       }
 
@@ -47,6 +52,9 @@ export default function CartPulseButton() {
     }
 
     function handleCartAdded(event: Event) {
+      const isLoggedIn = Boolean(localStorage.getItem("inkstone_access"));
+      if (!isLoggedIn) return;
+
       const detail = (event as CartAddedEvent).detail;
       const nextQuantity = detail?.quantity ?? 1;
       setVisible(true);

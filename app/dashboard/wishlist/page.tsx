@@ -83,13 +83,14 @@ export default function WishlistPage() {
 
   async function handleAddToCart(product: Product) {
     const isLogged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
-    if (isLogged) {
-      try {
-        await api.addToCart(product.id, 1);
-      } catch {
-        addToLocalCart(product, 1);
-      }
-    } else {
+    if (!isLogged) {
+      router.push("/login?redirect=/dashboard/wishlist");
+      return;
+    }
+
+    try {
+      await api.addToCart(product.id, 1);
+    } catch {
       addToLocalCart(product, 1);
     }
 

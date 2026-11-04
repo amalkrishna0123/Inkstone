@@ -45,7 +45,7 @@ export async function uploadToCloudinary(
 
   // Build FormData for upload
   const formData = new FormData();
-  const blob = new Blob([fileBuffer as any], { type: mimeType });
+  const blob = new Blob([fileBuffer as unknown as BlobPart], { type: mimeType });
   formData.append("file", blob, filename || `upload_${Date.now()}`);
   formData.append("api_key", API_KEY);
   formData.append("timestamp", String(timestamp));

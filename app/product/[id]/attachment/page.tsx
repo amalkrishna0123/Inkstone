@@ -19,6 +19,13 @@ export default function ProductAttachmentPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Security check: user must be logged in to upload attachments / customize order
+    const isLogged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
+    if (!isLogged) {
+      router.replace(`/login?redirect=${encodeURIComponent(`/product/${productId}/attachment`)}`);
+      return;
+    }
+
     const storedProduct = sessionStorage.getItem("crystal_checkout_product");
     if (storedProduct) {
       try {

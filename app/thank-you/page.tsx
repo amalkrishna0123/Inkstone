@@ -2,19 +2,27 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FiCheck, FiShoppingBag, FiArrowRight } from "react-icons/fi";
 
 export default function ThankYouPage() {
+  const router = useRouter();
   const [orderNumber, setOrderNumber] = useState("");
 
   useEffect(() => {
+    const isLogged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
+    if (!isLogged) {
+      router.replace("/login");
+      return;
+    }
+
     // Generate a mock order number
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     setOrderNumber(`ORD-${randomNum}`);
     
     // Clean up the checkout session
     sessionStorage.removeItem("crystal_checkout_product");
-  }, []);
+  }, [router]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5 py-20 relative overflow-hidden">

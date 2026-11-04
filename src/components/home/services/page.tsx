@@ -27,7 +27,7 @@ const HomeServices = () => {
                     <div className="w-full flex justify-between border-t border-[#00000054] py-10">
                         <div className="text-2xl font-medium">Custom 3D Crystal Engraving</div>
 
-                        <div className="flex justify-center items-center gap-10 md:w-[40%]">
+                        <div className="hidden md:flex justify-center items-center gap-10 md:w-[40%]">
                             <div className="text-right">Turn your favorite photos into stunning laser engraved crystal keepsakes with exceptional detail and clarity.</div>
                             {/* <div>lorem ipsum</div>
                             <div>lorem ipsum</div> */}
@@ -37,7 +37,7 @@ const HomeServices = () => {
                     <div className="w-full flex justify-between border-t border-[#00000054] py-10">
                         <div className="text-2xl font-medium">Wedding & Anniversary Keepsakes</div>
 
-                        <div className="flex justify-center items-center gap-10 md:w-[40%]">
+                        <div className="hidden md:flex justify-center items-center gap-10 md:w-[40%]">
                             <div className="text-right">Preserve your most meaningful moments with beautifully engraved crystal memories that last forever.</div>
                             {/* <div>lorem ipsum</div>
                             <div>lorem ipsum</div> */}
@@ -47,7 +47,7 @@ const HomeServices = () => {
                     <div className="w-full flex justify-between border-t border-[#00000054] py-10">
                         <div className="text-2xl font-medium">Memorial & Tribute Crystals</div>
 
-                        <div className="flex justify-center items-center gap-10 md:w-[40%]">
+                        <div className="hidden md:flex justify-center items-center gap-10 md:w-[40%]">
                             <div className="text-right">Honor loved ones with elegant crystal keepsakes that preserve treasured memories for generations.</div>
                             {/* <div>lorem ipsum</div>
                             <div>lorem ipsum</div> */}
@@ -57,7 +57,7 @@ const HomeServices = () => {
                     <div className="w-full flex justify-between border-t border-[#00000054] py-10">
                         <div className="text-2xl font-medium">Home Decor & Display Pieces</div>
 
-                        <div className="flex justify-center items-center gap-10 md:w-[40%]">
+                        <div className="hidden md:flex justify-center items-center gap-10 md:w-[40%]">
                             <div className="text-right">Enhance your living space with beautifully crafted crystal décor and display pieces that showcase your unique style.</div>
                             {/* <div>lorem ipsum</div>
                             <div>lorem ipsum</div> */}

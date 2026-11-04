@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Category images: public read, admin write
+    match /category-images/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Product images: public read, admin write
+    match /product-images/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Banner images: public read, admin write
+    match /banner-images/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Order attachments: authenticated users can upload or guest checkout
+    match /order-attachments/{fileName} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

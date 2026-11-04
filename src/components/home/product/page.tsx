@@ -46,7 +46,7 @@ const ProductHomePage = () => {
 
                 const catsWithProductImage = activeCats.map(cat => {
                     // Find a product in this category that has an image
-                    const productInCat = productsData.find(p => p.category.id === cat.id && p.image_url);
+                    const productInCat = productsData.find(p => p.category?.id === cat.id && p.image_url);
                     return {
                         ...cat,
                         product_image_url: productInCat?.image_url || cat.image_url || ""

@@ -268,7 +268,7 @@ export default function PaymentPage() {
               </div>
               <div className="min-w-0">
                 <h3 className="truncate font-bold">{product.name}</h3>
-                <p className="mt-1 text-xs text-neutral-500">{product.category.name}</p>
+                <p className="mt-1 text-xs text-neutral-500">{product.category?.name || "Ready Stock"}</p>
                 <p className="mt-3 font-semibold">Rs. {unitPrice}</p>
                 {typeof product.offer_price === "number" && <p className="text-xs text-neutral-400 line-through">Rs. {product.price}</p>}
                 <p className="mt-1 text-xs text-neutral-500">Qty: {quantity}</p>

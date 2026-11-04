@@ -1,0 +1,202 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "user_id": "INK-2FA79970",
+      "email": "inkadmin@inkstone.com",
+      "password_hash": "pbkdf2_sha256$1000000$gPdxmOlQeeq1UCtpzoELpJ$2x5CCcg/ACmTvcFGZzeJmoPUx6aoMGuqjj7dkZHxFfA=",
+      "name": "Super Admin",
+      "is_staff": 1,
+      "is_active": 1,
+      "created_at": "2026-10-23 14:00:15.759519"
+    },
+    {
+      "id": 3,
+      "user_id": "INK-268458B9",
+      "email": "test@gmail.com",
+      "password_hash": "pbkdf2_sha256$1000000$AaPgztqiQnTosT8l9APKFQ$rqXSmEGh1bo9Ya14mWN9g/Cd49VgDHfWTqQ7pg2I6b8=",
+      "name": "Test",
+      "is_staff": 0,
+      "is_active": 1,
+      "created_at": "2026-10-25 09:52:46.702520"
+    },
+    {
+      "id": 4,
+      "user_id": "INK-39950C06",
+      "email": "amalkrishna1437@gmail.com",
+      "password_hash": "pbkdf2_sha256$1000000$wRM7TsIApZ2pnu1SPG8Jzj$twhb4AklZsuXDxL9qq/JRxFkIR+UgwvnlRRnnO4rTjQ=",
+      "name": "Amal Krishna",
+      "is_staff": 0,
+      "is_active": 1,
+      "created_at": "2026-10-26 10:30:50.497341"
+    }
+  ],
+  "categories": [
+    {
+      "id": 2,
+      "name": "Keychain",
+      "slug": "Keychain",
+      "description": "",
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1792920012/category-images/tyi29kxtenmzok6ijrik.png",
+      "image_public_id": "category-images/tyi29kxtenmzok6ijrik",
+      "is_active": 1,
+      "created_at": "2026-10-25 09:20:04.699939",
+      "updated_at": "2026-10-25 09:20:04.699939"
+    },
+    {
+      "id": 3,
+      "name": "Locket",
+      "slug": "Locket",
+      "description": "",
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1792920086/category-images/od8eqzte1it7beffqvnm.jpg",
+      "image_public_id": "category-images/od8eqzte1it7beffqvnm",
+      "is_active": 1,
+      "created_at": "2026-10-25 09:21:18.256553",
+      "updated_at": "2026-10-25 09:21:18.256553"
+    },
+    {
+      "id": 4,
+      "name": "CM",
+      "slug": "CM",
+      "description": "",
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1792920120/category-images/ferrjtwxilhiwntt2o5g.jpg",
+      "image_public_id": "category-images/ferrjtwxilhiwntt2o5g",
+      "is_active": 1,
+      "created_at": "2026-10-25 09:21:52.388209",
+      "updated_at": "2026-10-25 09:21:52.388209"
+    }
+  ],
+  "products": [
+    {
+      "id": 2,
+      "name": "Keychain Heart",
+      "slug": "keychain-heart",
+      "description": "",
+      "price": 1800.0,
+      "offer_price": 1750.0,
+      "stock": 2,
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1792921155/product-images/vrqf3xmkzfdkibosthtt.png",
+      "image_public_id": "product-images/vrqf3xmkzfdkibosthtt",
+      "additional_image_urls": "[\"https://res.cloudinary.com/dgcs4cqfq/image/upload/v1792921205/product-images/r390i2f7ppbivssv4slz.jpg\", \"https://res.cloudinary.com/dgcs4cqfq/image/upload/v1792921202/product-images/ofust7hda9lkcfzvmtrp.png\", \"https://res.cloudinary.com/dgcs4cqfq/image/upload/v1792921204/product-images/tfy9y55tlemsbytsjtwt.jpg\"]",
+      "additional_image_public_ids": "[\"product-images/r390i2f7ppbivssv4slz\", \"product-images/ofust7hda9lkcfzvmtrp\", \"product-images/tfy9y55tlemsbytsjtwt\"]",
+      "is_active": 1,
+      "created_at": "2026-10-25 09:39:06.872430",
+      "updated_at": "2026-10-25 09:39:56.969146",
+      "product_type": "custom",
+      "category_id": 2
+    },
+    {
+      "id": 3,
+      "name": "Locket Pendant Octangle",
+      "slug": "locket-pendant-octangle",
+      "description": "",
+      "price": 1800.0,
+      "offer_price": 1760.0,
+      "stock": 1,
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1793011399/product-images/pxkc8usw33zuy5mvnrzx.jpg",
+      "image_public_id": "product-images/pxkc8usw33zuy5mvnrzx",
+      "additional_image_urls": "[]",
+      "additional_image_public_ids": "[]",
+      "is_active": 1,
+      "created_at": "2026-10-26 10:43:19.738235",
+      "updated_at": "2026-10-26 10:43:19.738235",
+      "product_type": "custom",
+      "category_id": 3
+    },
+    {
+      "id": 4,
+      "name": "CM Mini Nokia",
+      "slug": "cm-mini-nokia",
+      "description": "",
+      "price": 1350.0,
+      "offer_price": 1250.0,
+      "stock": 1,
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1793011479/product-images/egfbxvrsm89gygomvpfs.jpg",
+      "image_public_id": "product-images/egfbxvrsm89gygomvpfs",
+      "additional_image_urls": "[]",
+      "additional_image_public_ids": "[]",
+      "is_active": 1,
+      "created_at": "2026-10-26 10:44:40.034275",
+      "updated_at": "2026-10-26 10:44:40.034275",
+      "product_type": "custom",
+      "category_id": 4
+    },
+    {
+      "id": 5,
+      "name": "Lord Krishna",
+      "slug": "lord-krishna",
+      "description": "",
+      "price": 1600.0,
+      "offer_price": 1499.0,
+      "stock": 1,
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1793017928/product-images/xocs2qucs9oodpa4co54.png",
+      "image_public_id": "product-images/xocs2qucs9oodpa4co54",
+      "additional_image_urls": "[]",
+      "additional_image_public_ids": "[]",
+      "is_active": 1,
+      "created_at": "2026-10-26 12:32:08.675174",
+      "updated_at": "2026-10-26 12:32:08.675174",
+      "product_type": "ready_stock",
+      "category_id": null
+    }
+  ],
+  "offer_banners": [
+    {
+      "id": 2,
+      "title": "Test",
+      "subtitle": "Test",
+      "image_url": "https://res.cloudinary.com/dgcs4cqfq/image/upload/v1793013507/banner-images/yozloizi9gy8p6tfvbyt.png",
+      "image_public_id": "banner-images/yozloizi9gy8p6tfvbyt",
+      "link_url": "",
+      "starts_at": "2026-10-27 19:31:00",
+      "ends_at": "2026-10-31 11:18:00",
+      "is_active": 1,
+      "created_at": "2026-10-26 11:18:28.149200"
+    }
+  ],
+  "coupons": [],
+  "customer_addresses": [],
+  "orders": [
+    {
+      "id": 2,
+      "order_id": "CR-4D0C36",
+      "name": "Amal Krishna",
+      "email": "amalkrishna2001ma@gmail.com",
+      "total": 1849.0,
+      "status": "Pending",
+      "payment_method": "Razorpay",
+      "shipping_address": "Mekkappatt House Calicut 695011, Calicut, PIN: 680508",
+      "items": "[{\"product_id\": \"2\", \"name\": \"Keychain Heart\", \"price\": 1750, \"quantity\": 1}]",
+      "attachment_url": "",
+      "attachment_public_id": "",
+      "razorpay_order_id": "order_TsVRNf4eGSnKhH",
+      "razorpay_payment_id": "",
+      "razorpay_signature": "",
+      "created_at": "2026-10-26 10:36:40.731854",
+      "user_id": null,
+      "coupon_code": "",
+      "discount_amount": 0.0
+    },
+    {
+      "id": 3,
+      "order_id": "CR-183906",
+      "name": "Amal Krishna",
+      "email": "amalkrishna2001ma@gmail.com",
+      "total": 1349.0,
+      "status": "Pending",
+      "payment_method": "Razorpay",
+      "shipping_address": "Mekkappatt House Calicut 695011, Calicut, PIN: 680508",
+      "items": "[{\"product_id\": \"4\", \"name\": \"CM Mini Nokia\", \"price\": 1250, \"quantity\": 1}]",
+      "attachment_url": "",
+      "attachment_public_id": "",
+      "razorpay_order_id": "order_TsVnqHlBnypVTk",
+      "razorpay_payment_id": "",
+      "razorpay_signature": "",
+      "created_at": "2026-10-26 10:57:56.542673",
+      "user_id": null,
+      "coupon_code": "",
+      "discount_amount": 0.0
+    }
+  ],
+  "product_reviews": []
+}

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { FiArrowLeft, FiUploadCloud, FiTrash2, FiImage } from "react-icons/fi";
-import { Product } from "@/src/lib/inkstone-api";
+import { api, Product } from "@/src/lib/inkstone-api";
 
 export default function ProductAttachmentPage() {
   const router = useRouter();
@@ -12,6 +12,7 @@ export default function ProductAttachmentPage() {
   const productId = params?.id as string;
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -22,11 +23,27 @@ export default function ProductAttachmentPage() {
     if (storedProduct) {
       try {
         setProduct(JSON.parse(storedProduct) as Product);
+        setIsLoadingProduct(false);
+        return;
       } catch {
         sessionStorage.removeItem("crystal_checkout_product");
       }
     }
-  }, []);
+
+    if (productId) {
+      api.getProductById(productId)
+        .then((data) => {
+          setProduct(data);
+          sessionStorage.setItem("crystal_checkout_product", JSON.stringify(data));
+        })
+        .catch(() => {})
+        .finally(() => {
+          setIsLoadingProduct(false);
+        });
+    } else {
+      setIsLoadingProduct(false);
+    }
+  }, [productId]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -76,7 +93,6 @@ export default function ProductAttachmentPage() {
     if (file) {
       setIsUploading(true);
       try {
-        const { api } = await import("@/src/lib/inkstone-api");
         const res = await api.uploadOrderAttachment(file);
         sessionStorage.setItem("crystal_checkout_attachment", res.image_url);
         router.push("/checkout");
@@ -89,6 +105,14 @@ export default function ProductAttachmentPage() {
       router.push("/checkout");
     }
   };
+
+  if (isLoadingProduct) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5 py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-black border-t-transparent" />
+      </main>
+    );
+  }
 
   if (!product) {
     return (
@@ -208,7 +232,7 @@ export default function ProductAttachmentPage() {
               </div>
               <div className="min-w-0">
                 <h3 className="truncate font-bold text-sm">{product.name}</h3>
-                <p className="mt-1 text-xs text-neutral-500">{product.category.name}</p>
+                <p className="mt-1 text-xs text-neutral-500">{product.category?.name || "Ready Stock"}</p>
                 <p className="mt-2 font-semibold text-sm">Rs. {product.price}</p>
               </div>
             </div>

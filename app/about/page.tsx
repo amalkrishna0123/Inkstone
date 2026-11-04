@@ -5,23 +5,23 @@ import AboutGallery from "@/src/components/about/aboutGallery/page"
 
 const AboutUs = () => {
     return(
-        <div>
-            <section>
+        <main className="w-full overflow-x-hidden min-h-screen">
+            <section className="w-full">
                 <AboutHero/>
             </section>
 
-            <section>
+            <section className="w-full">
                 <TrustedPartners/>
             </section>
 
-            <section>
-             <InkStoneAbout/>
+            <section className="w-full">
+                <InkStoneAbout/>
             </section>
 
-            <section>
+            <section className="w-full">
                 <AboutGallery/>
             </section>
-        </div>
+        </main>
     )
 }
 

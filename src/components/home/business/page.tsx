@@ -4,7 +4,7 @@ import { MdNewReleases } from "react-icons/md";
 
 const Business = () => {
     return(
-        <div className="pt-32 md:pt-20">   
+        <div className="pt-20 md:pt-20">   
             <section className="flex flex-col items-center justify-center w-full">
                 <div className="w-full px-2 md:px-10 max-w-[1200px] mx-auto">
                     <div className="text-center mb-10">

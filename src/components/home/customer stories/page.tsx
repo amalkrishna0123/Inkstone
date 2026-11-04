@@ -157,7 +157,6 @@ export default function CustomerStories({ isStandalonePage = false }: CustomerSt
     setProgress(0);
   };
 
-  // Timer loop for 5-second automatic progression
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -298,164 +297,22 @@ export default function CustomerStories({ isStandalonePage = false }: CustomerSt
   const currentLikes = currentStory ? (likeCounts[currentStory.id] ?? currentStory.likes) : 0;
 
   return (
-    <section className="relative w-full overflow-hidden bg-white py-8 md:py-16 text-neutral-900 select-none">
+    <section className="md:hidden relative w-full overflow-hidden bg-white py-8 md:py-16 text-neutral-900 select-none">
       <div className="mx-auto max-w-[540px] px-4 sm:px-6">
-        
-        {/* ============================================================ */}
-        {/* 1. TOP HEADER                                               */}
-        {/* Title: "From Moment to Journal" with orange highlight        */}
-        {/* Top Right: Notification Bell Badge ("12") + Customer DP     */}
-        {/* ============================================================ */}
         <div className="flex items-center justify-between mb-7">
           <div className="leading-[1.1] text-center w-full">
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-[-2px] text-neutral-900">
               From Moment
             </h1>
-            <div className="text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">
+            <div className="text-3xl sm:text-4xl font-semibold tracking-[-2px] text-neutral-900">
               to <span className="text-[#ffea00]">Journal</span>
             </div>
           </div>
-
-         
         </div>
 
-        {/* ============================================================ */}
-        {/* 2. SUBHEADER                                                */}
-        {/* Left: "Explore Week »"                                      */}
-        {/* Right: "3 New" Badge & Week Tabs ("Week 48", "Week 47"...)  */}
-        {/* ============================================================ */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-1.5 text-neutral-900 font-bold text-lg sm:text-xl tracking-tight">
-            <span>Explore Week</span>
-            <span className="text-neutral-500 font-normal">»</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* "3 New" Badge Pill */}
-            <span className="px-2.5 py-0.5 rounded-full bg-[#fff1eb] text-[#f25822] text-xs font-semibold">
-              3 New
-            </span>
-
-            {/* Stacked / Horizontal Week Selector */}
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              {INITIAL_WEEKS.map((w, idx) => {
-                const isActive = activeWeek === w.id;
-                return (
-                  <button
-                    key={w.id}
-                    onClick={() => setActiveWeek(w.id)}
-                    className={`transition-colors cursor-pointer ${
-                      isActive
-                        ? "text-[#f25822] font-bold"
-                        : idx === 1
-                        ? "text-[#f25822]/60 hover:text-[#f25822]"
-                        : "text-[#f25822]/30 hover:text-[#f25822]/60"
-                    }`}
-                  >
-                    {w.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* ============================================================ */}
-        {/* 3. HORIZONTAL CUSTOMER PROFILE / STORIES SECTION (INSTA-STYLE) */}
-        {/* Display profile pictures:                                   */}
-        {/* - Yellow outline stroke when customer has unseen stories     */}
-        {/* - Grey outline stroke once all stories from customer viewed  */}
-        {/* - Email ID automatically connected to DP                     */}
-        {/* ============================================================ */}
-        <div className="flex items-center justify-between gap-3 mb-8 overflow-x-auto no-scrollbar py-2 px-1">
-          {customers.map((cust, idx) => {
-            const isSelected = idx === currentCustomerIndex;
-            const hasUnseen = hasCustomerUnseenStories(cust);
-            const avatarSrc = cust.avatarUrl || getAvatarFromEmail(cust.email, cust.name);
-
-            return (
-              <button
-                key={cust.id}
-                onClick={() => selectCustomer(idx)}
-                className="flex flex-col items-center flex-shrink-0 cursor-pointer group focus:outline-hidden"
-              >
-                {/* Story Circle Ring */}
-                <div
-                  className={`relative p-0.5 rounded-full transition-all duration-300 ${
-                    hasUnseen
-                      ? "ring-3 ring-[#ffea00] ring-offset-2 ring-offset-white shadow-xs"
-                      : "ring-2 ring-neutral-300 ring-offset-2 ring-offset-white opacity-85"
-                  } ${isSelected ? "scale-105" : "group-hover:scale-102"}`}
-                >
-                  <div className="w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] rounded-full overflow-hidden bg-neutral-100 flex items-center justify-center">
-                    <img
-                      src={avatarSrc}
-                      alt={cust.name}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      onError={(e) => {
-                        // Fallback to dicebear if direct image fails
-                        (e.target as HTMLImageElement).src = getAvatarFromEmail(cust.email, cust.name);
-                      }}
-                    />
-                  </div>
-
-                  {/* Tiny unseen story indicator pip */}
-                  {hasUnseen && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-[#ffea00] border-2 border-white rounded-full shadow-xs" />
-                  )}
-                </div>
-              </button>
-            );
-          })}
-
-          {/* 4th Special Date Circle ("Dec 10 Wed") matching reference image */}
-          <div className="flex flex-col items-center flex-shrink-0">
-            <div className="w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] rounded-full bg-neutral-100/90 text-neutral-600 flex flex-col items-center justify-center font-sans shadow-2xs border border-neutral-200/60">
-              <span className="text-xs font-semibold text-neutral-400 uppercase tracking-tight leading-none">
-                Dec
-              </span>
-              <span className="text-xl sm:text-2xl font-black text-neutral-700 leading-none my-0.5">
-                10
-              </span>
-              <span className="text-[11px] font-medium text-neutral-400 capitalize leading-none">
-                Wed
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* ============================================================ */}
-        {/* 4. MAIN FEATURED STORY HERO CARD                            */}
-        {/* Matches reference design: rounded card, watermark text,     */}
-        {/* bottom-left DP, bottom-right "4 New", left title, heart, nav */}
-        {/* ============================================================ */}
         <div className="relative w-full">
 
-          {/* Large Watermark Background Text (e.g. "ROCKET #15") */}
-          <div className="pointer-events-none hidden md:block absolute -top-4 right-0 z-0 text-right opacity-15 select-none font-black tracking-tighter text-neutral-400 text-6xl sm:text-7xl">
-            {currentStory?.watermarkText || "CRYSTAL #15"}
-          </div>
-
-          <div className="pointer-events-none  md:hidden absolute -top-4 right-0 z-0 text-center opacity-15 select-none font-black tracking-tighter text-neutral-400 text-6xl sm:text-7xl">
-            {currentStory?.watermarkText || "CRYSTAL #15"}
-          </div>
-
           <div className="relative z-10 hidden md:flex items-center justify-between gap-4">
-
-            {/* Left Column: Category and Author Title */}
-            <div className="w-[120px] sm:w-[140px] flex-shrink-0 flex flex-col justify-center text-left py-4">
-              <span className="text-xs font-bold uppercase tracking-widest text-[#f25822]">
-                {currentStory?.category || "FEATURE"}
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-neutral-900 leading-tight mt-0.5">
-                {currentStory?.category || "NBA"}
-              </h2>
-              <p className="text-xs sm:text-sm text-neutral-500 font-medium mt-1 leading-snug">
-                {currentCustomer?.subtitle || currentCustomer?.name}
-              </p>
-            </div>
-
-            {/* Center: Main Story Card with touch gesture & swiping */}
             <div
               className="relative flex-1 max-w-[280px] sm:max-w-[310px] aspect-[4/5.4] rounded-[32px] overflow-hidden bg-neutral-900 shadow-2xl transition-all duration-300 cursor-grab active:cursor-grabbing group"
               onTouchStart={handleTouchStart}
@@ -586,19 +443,6 @@ export default function CustomerStories({ isStandalonePage = false }: CustomerSt
 
           <div className="relative z-10 md:hidden flex flex-col items-center justify-between gap-4">
 
-            {/* Left Column: Category and Author Title */}
-            <div className="w-[120px] sm:w-[140px] flex-shrink-0 flex flex-col justify-center text-left py-4">
-              <span className="text-xs font-bold uppercase tracking-widest text-[#f25822]">
-                {currentStory?.category || "FEATURE"}
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-neutral-900 leading-tight mt-0.5">
-                {currentStory?.category || "NBA"}
-              </h2>
-              <p className="text-xs sm:text-sm text-neutral-500 font-medium mt-1 leading-snug">
-                {currentCustomer?.subtitle || currentCustomer?.name}
-              </p>
-            </div>
-
             {/* Center: Main Story Card with touch gesture & swiping */}
             <div
               className="relative flex-1 max-w-[450px] sm:max-w-[310px] aspect-[9/16] rounded-[32px] overflow-hidden bg-neutral-900 shadow-2xl transition-all duration-300 cursor-grab active:cursor-grabbing group"
@@ -724,40 +568,10 @@ export default function CustomerStories({ isStandalonePage = false }: CustomerSt
                 <FaArrowRight className="text-sm" />
               </button>
             </div>
-            </div>
-
-            {/* Right Column: Like Button, Play/Pause toggle, and Arrows */}
-            
+            </div>            
           </div>
-
-          {/* Story Caption & Loop Status */}
-          {/* <div className="mt-5 flex items-center justify-between text-xs text-neutral-500 px-2">
-            <p className="line-clamp-1 italic max-w-[340px]">
-              "{currentStory?.caption || "Pure vitality and customer experiences."}"
-            </p>
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-[11px] text-neutral-400 font-mono">
-                <span className={`w-1.5 h-1.5 rounded-full ${isPlaying ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`} />
-                {isPlaying ? "Continuous 5s Loop" : "Paused"}
-              </span>
-
-              {!isStandalonePage && (
-                <Link
-                  href="/customer-stories"
-                  className="text-[#f25822] font-semibold hover:underline flex items-center gap-1 ml-2"
-                >
-                  Full View <FiExternalLink className="text-xs" />
-                </Link>
-              )}
-            </div>
-          </div> */}
         </div>
 
-        {/* ============================================================ */}
-        {/* EMAIL DP SYNC MODAL                                         */}
-        {/* Allows customer to connect their email ID so their profile   */}
-        {/* image is automatically fetched and associated with account  */}
-        {/* ============================================================ */}
         {isEmailModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
             <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-neutral-100 animate-in fade-in zoom-in-95 duration-200">

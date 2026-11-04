@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, Product, ProductDetail, addToLocalCart, toggleLocalWishlist, getLocalWishlist } from "@/src/lib/inkstone-api";
+import { api, Product, ProductDetail, Review, addToLocalCart, toggleLocalWishlist, getLocalWishlist } from "@/src/lib/inkstone-api";
 import { TbCurrencyRupee, TbTruckDelivery, TbShieldCheck, TbRefresh, TbCheck } from "react-icons/tb";
 import { FaArrowRight, FaStar, FaRegStar, FaStarHalfAlt, FaHeart, FaRegHeart } from "react-icons/fa";
 import { HiMiniShoppingBag } from "react-icons/hi2";
@@ -104,7 +104,7 @@ function SmallProductCard({ product }: { product: Product }) {
         <div className="absolute inset-0 bg-black/0 transition-all duration-300 group-hover:bg-black/20" />
       </div>
       <div className="mt-3 px-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{product.category.name}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{product.category?.name ?? "Ready Stock"}</p>
         <p className="mt-0.5 truncate font-semibold tracking-tight text-neutral-900">{product.name}</p>
         <div className="mt-1 flex items-center gap-1 text-sm font-bold">
           <TbCurrencyRupee className="text-[#4a5c3a]" />
@@ -136,9 +136,10 @@ export default function ProductDetailPage() {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [cartAdding, setCartAdding] = useState(false);
   const [addedToast, setAddedToast] = useState(false);
+  const [reviewsData, setReviewsData] = useState<{ reviews: Review[]; total: number; average_rating: number; average_quality_rating: number } | null>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
 
-  // ── Load product & wishlist state ─────────────────────────────────────────
+  // ── Load product & wishlist & reviews state ─────────────────────────────────────────
   useEffect(() => {
     if (!productId) return;
     setLoading(true);
@@ -155,6 +156,11 @@ export default function ProductDetailPage() {
         } else {
           setIsWishlisted(getLocalWishlist().includes(data.id));
         }
+
+        // Fetch real reviews
+        api.getProductReviews(productId)
+          .then((r) => setReviewsData(r))
+          .catch(() => {});
 
         // Update recently viewed in localStorage
         try {
@@ -215,7 +221,11 @@ export default function ProductDetailPage() {
     if (!product) return;
     handleAddToCart();
     sessionStorage.setItem("crystal_checkout_product", JSON.stringify(product));
-    router.push(`/product/${product.id}/attachment`);
+    if (product.product_type === "ready_stock") {
+      router.push("/checkout");
+    } else {
+      router.push(`/product/${product.id}/attachment`);
+    }
   }
 
   function scrollCarousel(dir: "left" | "right") {
@@ -350,11 +360,24 @@ export default function ProductDetailPage() {
 
             {/* ── Product Info ──────────────────────────────────────────────── */}
             <div className="flex flex-col gap-5 lg:pt-2">
-              {/* Category pill */}
-              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-[#f0f4ec] px-3 py-1 text-xs font-semibold uppercase tracking-widest text-[#4a5c3a]">
-                {product.category.image_url ? <img src={product.category.image_url} alt="" className="h-6 w-6 rounded-full object-cover" /> : <HiMiniShoppingBag />}
-                {product.category.name}
-              </span>
+              {/* Category pill / Ready Stock badge */}
+              <div className="flex flex-wrap items-center gap-2">
+                {product.category ? (
+                  <span className="inline-flex w-fit items-center gap-2 rounded-full bg-[#f0f4ec] px-3 py-1 text-xs font-semibold uppercase tracking-widest text-[#4a5c3a]">
+                    {product.category.image_url ? <img src={product.category.image_url} alt="" className="h-5 w-5 rounded-full object-cover" /> : <HiMiniShoppingBag />}
+                    {product.category.name}
+                  </span>
+                ) : (
+                  <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-800">
+                    📦 Ready Stock Product
+                  </span>
+                )}
+                {product.product_type === "custom" && (
+                  <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-purple-50 border border-purple-200 px-3 py-1 text-xs font-bold uppercase tracking-wider text-purple-800">
+                    ✨ Photo Customization
+                  </span>
+                )}
+              </div>
 
               {/* Name */}
               <h1 className="text-4xl font-bold leading-tight tracking-[-2px] text-neutral-900">{product.name}</h1>
@@ -614,12 +637,21 @@ export default function ProductDetailPage() {
             {/* ── Summary Column ──────────────────────────────────────────── */}
             <div className="flex flex-col gap-6">
               <div>
-                <span className="text-7xl font-extrabold tracking-tighter text-neutral-900">{avgRating}</span>
+                <span className="text-7xl font-extrabold tracking-tighter text-neutral-900">
+                  {reviewsData && reviewsData.total > 0 ? reviewsData.average_rating.toFixed(1) : avgRating}
+                </span>
                 <span className="ml-1 text-lg text-neutral-400">/ 5</span>
                 <div className="mt-2">
-                  <StarRating rating={avgRating} size="text-xl" />
+                  <StarRating rating={reviewsData && reviewsData.total > 0 ? reviewsData.average_rating : avgRating} size="text-xl" />
                 </div>
-                <p className="mt-1 text-sm text-neutral-400">Based on {MOCK_REVIEWS.length} reviews</p>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Based on {reviewsData && reviewsData.total > 0 ? reviewsData.total : MOCK_REVIEWS.length} reviews
+                </p>
+                {reviewsData && reviewsData.average_quality_rating > 0 && (
+                  <p className="mt-1 text-xs font-semibold text-emerald-700">
+                    Quality Rating: {reviewsData.average_quality_rating.toFixed(1)} / 5.0
+                  </p>
+                )}
               </div>
 
               {/* Rating bars */}
@@ -639,56 +671,86 @@ export default function ProductDetailPage() {
                 ))}
               </div>
 
-              {/* Write review button */}
-              <button
-                type="button"
-                id="write-review-btn"
-                className="mt-2 w-full rounded-full bg-neutral-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-[#ffea00] hover:text-black"
-              >
-                Write a Review
-              </button>
+              {/* Write review button - links to delivered orders in customer dashboard */}
+              <div>
+                <button
+                  type="button"
+                  id="write-review-btn"
+                  onClick={() => router.push("/dashboard/orders")}
+                  className="mt-2 w-full rounded-full bg-neutral-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-[#ffea00] hover:text-black"
+                >
+                  Write a Review
+                </button>
+                <p className="mt-2 text-center text-[11px] text-neutral-500">
+                  Reviews are available after an order is successfully delivered.
+                </p>
+              </div>
             </div>
 
             {/* ── Review Cards ─────────────────────────────────────────────── */}
             <div className="flex flex-col gap-5">
-              {MOCK_REVIEWS.map((review) => (
-                <div key={review.id} className="group flex gap-4 rounded-3xl bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
-                  {/* Avatar */}
-                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#f0f4ec] text-sm font-bold text-[#4a5c3a]">
-                    {review.avatar}
+              {reviewsData && reviewsData.reviews.length > 0 ? (
+                reviewsData.reviews.map((review) => (
+                  <div key={review.id} className="group flex gap-4 rounded-3xl bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md border border-neutral-100">
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#f0f4ec] text-sm font-bold text-[#4a5c3a]">
+                      {(review.user_name || "C").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-neutral-900">{review.user_name}</span>
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600">Verified Buyer</span>
+                        <span className="ml-auto text-xs text-neutral-400">
+                          {review.created_at ? new Date(review.created_at).toLocaleDateString() : "Recent"}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-3">
+                        <StarRating rating={review.rating} size="text-xs" />
+                        <span className="text-xs font-semibold text-neutral-600">Quality: {review.quality_rating}/5</span>
+                      </div>
+                      <p className="mt-3 text-sm leading-relaxed text-neutral-600">{review.comment || "Great product, matched description perfectly."}</p>
+                    </div>
                   </div>
+                ))
+              ) : (
+                MOCK_REVIEWS.map((review) => (
+                  <div key={review.id} className="group flex gap-4 rounded-3xl bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md">
+                    {/* Avatar */}
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#f0f4ec] text-sm font-bold text-[#4a5c3a]">
+                      {review.avatar}
+                    </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-neutral-900">{review.name}</span>
-                      {review.verified && (
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600">Verified</span>
-                      )}
-                      <span className="ml-auto text-xs text-neutral-400">{review.date}</span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <StarRating rating={review.rating} size="text-xs" />
-                    </div>
-                    <h4 className="mt-2 font-semibold text-neutral-800">{review.title}</h4>
-                    <p className="mt-1 text-sm leading-relaxed text-neutral-500">{review.body}</p>
-                    <div className="mt-3 flex items-center gap-4">
-                      <button
-                        type="button"
-                        className="flex items-center gap-1.5 text-xs text-neutral-400 transition hover:text-neutral-800"
-                      >
-                        👍 Helpful ({review.helpful})
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs text-neutral-300 transition hover:text-neutral-600"
-                      >
-                        Report
-                      </button>
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-neutral-900">{review.name}</span>
+                        {review.verified && (
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600">Verified</span>
+                        )}
+                        <span className="ml-auto text-xs text-neutral-400">{review.date}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <StarRating rating={review.rating} size="text-xs" />
+                      </div>
+                      <h4 className="mt-2 font-semibold text-neutral-800">{review.title}</h4>
+                      <p className="mt-1 text-sm leading-relaxed text-neutral-500">{review.body}</p>
+                      <div className="mt-3 flex items-center gap-4">
+                        <button
+                          type="button"
+                          className="flex items-center gap-1.5 text-xs text-neutral-400 transition hover:text-neutral-800"
+                        >
+                          👍 Helpful ({review.helpful})
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-neutral-300 transition hover:text-neutral-600"
+                        >
+                          Report
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
           </div>

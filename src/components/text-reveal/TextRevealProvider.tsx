@@ -30,8 +30,6 @@ type TextRevealContextValue = {
 
 const TextRevealContext = createContext<TextRevealContextValue | null>(null);
 
-const TEXT_NODE_SELECTOR =
-  "h1,h2,h3,h4,h5,h6,p,a,button,li,span,div,[data-text-reveal]";
 const SKIP_SELECTOR =
   "script,style,svg,path,video,img,picture,canvas,input,textarea,select,option,br,[aria-hidden='true'],[data-text-reveal-skip]";
 
@@ -44,48 +42,6 @@ function hasReadableTextNode(element: Element) {
     (node) =>
       node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
   );
-}
-
-function shouldPrepareTextNode(node: Node) {
-  const parent = node.parentElement;
-  const text = node.textContent;
-
-  if (!parent || !text?.trim()) return false;
-  if (parent.closest(SKIP_SELECTOR)) return false;
-  if (parent.hasAttribute("data-text-reveal")) return false;
-  if (parent.closest("[data-text-reveal-piece]")) return false;
-  if (!parent.matches(TEXT_NODE_SELECTOR)) return false;
-
-  return true;
-}
-
-function wrapLooseTextNodes(root: HTMLElement) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) =>
-      shouldPrepareTextNode(node)
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT,
-  });
-
-  const textNodes: Text[] = [];
-  let current = walker.nextNode();
-
-  while (current) {
-    textNodes.push(current as Text);
-    current = walker.nextNode();
-  }
-
-  textNodes.forEach((node) => {
-    const parent = node.parentElement;
-
-    if (!parent || !node.textContent?.trim()) return;
-
-    const wrapper = document.createElement("span");
-    wrapper.dataset.textReveal = "auto";
-    wrapper.dataset.textRevealPiece = "true";
-    wrapper.textContent = node.textContent;
-    parent.replaceChild(wrapper, node);
-  });
 }
 
 function getRevealKind(element: HTMLElement): RevealKind {
@@ -213,8 +169,6 @@ export default function TextRevealProvider({
       const root = document.body;
 
       contextRef.current = gsap.context(() => {
-        wrapLooseTextNodes(root);
-
         const candidates = Array.from(
           root.querySelectorAll<HTMLElement>("[data-text-reveal]"),
         ).filter((element) => {

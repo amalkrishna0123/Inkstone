@@ -21,6 +21,8 @@ import {
   api, 
   getProductPrice 
 } from "@/src/lib/inkstone-api";
+import { IoBagCheckOutline } from "react-icons/io5";
+
 
 const shippingCost = 99;
 
@@ -255,27 +257,27 @@ export default function CheckoutPage() {
 
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-black">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-        <Link href="/product" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-neutral-600 hover:text-black">
+      <div className="mx-auto max-w-6xl px-2 py-8 sm:px-6 sm:py-12">
+        <Link href="/product" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-neutral-600 hover:text-black pt-14">
           <FiArrowLeft /> Back to products
         </Link>
 
         <div className="mb-8">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#8d8300]">Crystal checkout</p>
-          <h1 className="mt-1 text-3xl sm:text-5xl font-black tracking-tight">Complete your order.</h1>
+          <p className="text- font-medium text-center tracking-[] text-[#000] flex gap-2 justify-center items-center"><IoBagCheckOutline className="bg-[#ffea00] p-0.5"/> Crystal checkout</p>
+          <h1 className="mt-1 text-3xl sm:text-5xl font-medium tracking-[-1px] text-center">Complete your order.</h1>
         </div>
 
         <form onSubmit={placeOrder} className="grid gap-8 lg:grid-cols-[1fr_390px]">
           {/* ── Left Column: Delivery Address & Customer Details ── */}
-          <section className="border border-black/10 bg-white p-6 sm:p-8 shadow-sm">
+          <section className="border border-black/10 bg-white p-6 sm:p-8 shadow-sm rounded-3xl">
             <div className="mb-6 flex items-center justify-between border-b border-black/10 pb-5">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff7a8] text-lg">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ffea00] text-lg">
                   <FiMapPin />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">Delivery Address</h2>
-                  <p className="text-xs text-neutral-500">Where should we deliver your crystal order?</p>
+                  <h2 className="text-lg font-medium tracking-[-1px]">Delivery Address</h2>
+                  {/* <p className="text-xs text-neutral-500">Where should we deliver your crystal order?</p> */}
                 </div>
               </div>
               <div className="flex items-center gap-1 text-xs text-neutral-400">
@@ -455,8 +457,8 @@ export default function CheckoutPage() {
           </section>
 
           {/* ── Right Column: Order Summary, Coupon & Attachments ── */}
-          <aside className="h-fit space-y-6 lg:sticky lg:top-8">
-            <div className="border border-black/10 bg-white p-6 shadow-sm">
+          <aside className="h-fit space-y-6 lg:sticky lg:top-8 rounded-3xl">
+            <div className="border border-black/10 bg-white p-6 shadow-sm rounded-3xl">
               <h2 className="mb-4 text-lg font-bold">Order Summary</h2>
 
               {/* Product item */}

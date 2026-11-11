@@ -1,6 +1,6 @@
 const ContactHero = () => {
     return(
-        <div className="pt-20 pb-10 bg-gradient-to-r from-[#fffcf5] to-[#e2e2e2]">
+        <div className="pt-24 pb-10 bg-gradient-to-r from-[#fffcf5] to-[#e2e2e2]">
             <section className="min-h-screen w-full">
                 <div className="max-w-[1200px] border border-[#00000010] p-3 gap-3 grid md:grid-cols-[1fr_1.5fr] min-h-screen rounded-3xl w-full mx-auto bg-[#fff]">
                     <div className="w-full rounded-[16px] h-full bg-gradient-to-r from-[#dbdbdb] to-[#f7f6ed] px-5 py-5 flex flex-col justify-center items-center">

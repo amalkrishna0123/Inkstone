@@ -1,18 +1,19 @@
 import { FaPlayCircle } from "react-icons/fa";
+import { BsCameraReelsFill } from "react-icons/bs";
 
 const AboutGallery = () => {
     return(
-        <div className="w-full mt-10">
+        <div className="w-full">
             <section className="w-full">
-                <div className="bg-[#fff4ce] py-12 sm:py-16 md:py-24 px-4 sm:px-6 lg:px-8">
-                    <div className="flex flex-col mb-8 sm:mb-12 justify-center items-center text-center w-full max-w-3xl mx-auto">
-                        <span className="text-xs sm:text-sm tracking-tight px-6 py-2 rounded-full bg-[#fff] font-medium shadow-xs mb-3">Featured Videos</span>
-                        <h2 className="text-3xl sm:text-4xl md:text-5xl font-normal tracking-tight sm:tracking-[-2px] md:tracking-[-3px] text-gray-900 leading-tight">
-                            lorem ipsum in Action
+                <div className="bg-[#ebebeb91] py-12 sm:py-16 md:py-24 px-4 sm:px-6 lg:px-8">
+                    <div className="flex flex-col mb-5 sm:mb-5 justify-center items-center text-center w-full max-w-3xl mx-auto">
+                        <span className="text-xs sm:text-sm tracking-tight px-6 py-2 rounded-full font-medium shadow-xs flex items-center gap-2 mb-3 bg-[#ffea00]"><BsCameraReelsFill className="text-[#]"/>Featured Videos</span>
+                        <h2 className="text-3xl sm:text-4xl md:text-6xl font-normal tracking-tight sm:tracking-[-2px] md:tracking-[-4px] text-gray-900 leading-tight">
+                       <span className="">Moments</span> That Matter
                         </h2>
-                        <p className="mt-2.5 max-w-[440px] text-xs sm:text-sm md:text-base text-gray-600 leading-relaxed">
+                        {/* <p className="mt-2.5 max-w-[440px] text-xs sm:text-sm md:text-base text-gray-600 leading-relaxed">
                             Lorem ipsum dolor sit amet consectetur adipisicing elit. Laborum voluptatum ab explicabo numquam quo commodi, ut nam quibusdam atque nemo?
-                        </p>
+                        </p> */}
                     </div>
 
                     <div className="max-w-[1220px] mx-auto">

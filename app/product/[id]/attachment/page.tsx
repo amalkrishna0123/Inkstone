@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { FiArrowLeft, FiUploadCloud, FiTrash2, FiImage } from "react-icons/fi";
 import { api, Product } from "@/src/lib/inkstone-api";
+import { RiImageCircleAiFill } from "react-icons/ri";
 
 export default function ProductAttachmentPage() {
   const router = useRouter();
@@ -123,8 +124,8 @@ export default function ProductAttachmentPage() {
 
   if (!product) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5 py-20">
-        <div className="w-full max-w-md border border-black/10 bg-white p-8 text-center">
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-2 py-20">
+        <div className="w-full max-w-md border border-black/10 bg-white px-2 py-8 text-center">
           <h1 className="text-3xl font-black">No product selected</h1>
           <p className="mt-3 text-sm text-neutral-500">Go back and select a product to customize.</p>
           <Link href="/product" className="mt-7 inline-flex bg-[#ffea00] px-5 py-3 text-sm font-bold text-black hover:bg-neutral-900 hover:text-[#ffea00] transition-colors">
@@ -137,21 +138,21 @@ export default function ProductAttachmentPage() {
 
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-black">
-      <div className="mx-auto max-w-4xl px-5 py-8 sm:py-12 pt-24">
+      <div className="mx-auto max-w-4xl px-2 py-8 sm:py-5 pt-24">
         <Link href={`/product/${productId}`} className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-neutral-600 hover:text-black">
           <FiArrowLeft /> Back to product
         </Link>
         
-        <div className="mb-10">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#8d8300]">Customize your order</p>
-          <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">Attach an Image.</h1>
-          <p className="mt-4 text-sm text-neutral-500">Provide an image for customization or reference. You can optionally skip this step.</p>
+        <div className="mb-5">
+          <p className="text- font-medium tracking-[-1px] text-center text-[#000] flex gap-2 items-center justify-center"><RiImageCircleAiFill className="bg-[#ffea00] p-0.5 text-black"/> Customize your order</p>
+          <h1 className="mt-2 text-4xl font-medium text-center tracking-tight sm:text-5xl">Attach an Image.</h1>
+          <p className="mt-4 text-sm text-center text-neutral-500">Provide an image for customization or reference. You can optionally skip this step.</p>
         </div>
 
-        <div className="grid gap-8 md:grid-cols-[1fr_320px]">
+        <div className="grid gap-8 md:grid-cols-[1fr_320px] rounded-3xl">
           {/* Main upload section */}
-          <div className="border border-black/10 bg-white p-6 sm:p-10 shadow-sm">
-            <h2 className="mb-6 text-xl font-bold">Upload Image</h2>
+          <div className="border border-black/10 bg-white p-6 sm:p-10 shadow-sm rounded-3xl">
+            <h2 className="mb-6 text-xl font-medium text-center">Upload Image</h2>
             
             {!preview ? (
               <div 
@@ -165,7 +166,7 @@ export default function ProductAttachmentPage() {
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 text-[#4a5c3a]">
                   <FiUploadCloud className="text-2xl" />
                 </div>
-                <h3 className="mb-2 text-lg font-bold">Drag & Drop to Upload</h3>
+                <h3 className="mb-2 text-lg font-medium tracking-[-1px]">Drag & Drop to Upload</h3>
                 <p className="mb-6 text-sm text-neutral-400">or click below to browse your files (PNG, JPG, max 5MB)</p>
                 <button
                   type="button"
@@ -227,8 +228,8 @@ export default function ProductAttachmentPage() {
           </div>
 
           {/* Sidebar order summary */}
-          <aside className="h-fit border border-black/10 bg-white p-6 shadow-sm lg:sticky lg:top-24">
-            <h2 className="mb-6 text-lg font-bold">Selected Product</h2>
+          <aside className="h-fit border border-black/10 bg-white p-6 shadow-sm lg:sticky lg:top-24 rounded-3xl">
+            <h2 className="mb-6 text-lg font-medium tracking-[-1px]">Selected Product</h2>
             <div className="flex gap-4">
               <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[#f2f2f2]">
                 {product.image_url ? (

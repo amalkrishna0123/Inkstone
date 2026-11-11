@@ -8,6 +8,8 @@ import Hero from "./hero/page"
 import PreFooter from "./pre footer/page";
 import ProductHomePage from "./product/page";
 import HomeServices from "./services/page";
+import AboutGallery from "../about/aboutGallery/page";
+import WallpaperSection from "../services/wallpaper/page";
 
 const HomePage = () => {
     return (
@@ -25,7 +27,15 @@ const HomePage = () => {
             </section>
 
             <section>
+                <AboutGallery/>
+            </section>
+
+            <section>
                 <Enhanced/>
+            </section>
+
+            <section>
+                <WallpaperSection/>
             </section>
 
             <section>

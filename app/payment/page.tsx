@@ -27,6 +27,7 @@ function loadRazorpayScript(): Promise<boolean> {
 
 export default function PaymentPage() {
   const router = useRouter();
+  const [checkoutItems, setCheckoutItems] = useState<{ product: Product; quantity: number; attachment_url?: string }[]>([]);
   const [product, setProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [processing, setProcessing] = useState(false);
@@ -40,18 +41,47 @@ export default function PaymentPage() {
       return;
     }
 
-    const storedProduct = sessionStorage.getItem("crystal_checkout_product");
-    if (storedProduct) {
+    // 1. Try loading full checkout items (from cart or multi-item checkout)
+    const storedItems = sessionStorage.getItem("crystal_checkout_items");
+    let loadedItems: { product: Product; quantity: number; attachment_url?: string }[] = [];
+
+    if (storedItems) {
       try {
-        setProduct(JSON.parse(storedProduct) as Product);
+        const parsed = JSON.parse(storedItems);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loadedItems = parsed.map((item: any) => ({
+            product: item.product || item,
+            quantity: item.quantity || 1,
+            attachment_url: item.attachment_url || "",
+          }));
+        }
       } catch {
-        sessionStorage.removeItem("crystal_checkout_product");
+        sessionStorage.removeItem("crystal_checkout_items");
       }
+    }
+
+    // 2. Fallback to single product
+    if (loadedItems.length === 0) {
+      const storedProduct = sessionStorage.getItem("crystal_checkout_product");
+      if (storedProduct) {
+        try {
+          const p = JSON.parse(storedProduct) as Product;
+          loadedItems = [{ product: p, quantity: 1, attachment_url: sessionStorage.getItem("crystal_checkout_attachment") ?? "" }];
+        } catch {
+          sessionStorage.removeItem("crystal_checkout_product");
+        }
+      }
+    }
+
+    if (loadedItems.length > 0) {
+      setCheckoutItems(loadedItems);
+      setProduct(loadedItems[0].product);
+      setQuantity(loadedItems[0].quantity);
     }
 
     // Pre-load the Razorpay SDK while the user reads the page
     loadRazorpayScript();
-  }, []);
+  }, [router]);
 
   // Restore quantity from delivery session data if available
   useEffect(() => {
@@ -59,10 +89,12 @@ export default function PaymentPage() {
     if (deliveryStr) {
       try {
         const delivery = JSON.parse(deliveryStr);
-        if (delivery.quantity) setQuantity(Number(delivery.quantity));
+        if (delivery.quantity && checkoutItems.length <= 1) {
+          setQuantity(Number(delivery.quantity));
+        }
       } catch { /* ignore */ }
     }
-  }, []);
+  }, [checkoutItems.length]);
 
   const handlePayment = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -75,12 +107,46 @@ export default function PaymentPage() {
       if (!loaded) throw new Error("Could not load Razorpay. Please check your connection.");
 
       const storedDeliveryStr = sessionStorage.getItem("crystal_checkout_delivery");
-      if (!storedDeliveryStr || !product) throw new Error("Missing checkout data. Please go back and try again.");
+      if (!storedDeliveryStr || (checkoutItems.length === 0 && !product)) {
+        throw new Error("Missing checkout data. Please go back to checkout and try again.");
+      }
 
       const delivery = JSON.parse(storedDeliveryStr);
       const attachmentUrl = sessionStorage.getItem("crystal_checkout_attachment") ?? "";
-      const unitPrice = getProductPrice(product);
-      const total = unitPrice * (delivery.quantity ?? quantity) + shippingCost;
+      
+      const orderItems = checkoutItems.length > 0
+        ? checkoutItems.map((item) => ({
+            product_id: item.product.id,
+            name: item.product.name,
+            price: getProductPrice(item.product),
+            quantity: item.quantity,
+          }))
+        : product ? [
+            {
+              product_id: product.id,
+              name: product.name,
+              price: getProductPrice(product),
+              quantity: delivery.quantity ?? quantity,
+            },
+          ] : [];
+
+      const calculatedSubtotal = checkoutItems.length > 0
+        ? checkoutItems.reduce((acc, item) => acc + getProductPrice(item.product) * item.quantity, 0)
+        : product ? getProductPrice(product) * (delivery.quantity ?? quantity) : 0;
+      
+      // Check for stored coupon discount
+      const storedCouponStr = sessionStorage.getItem("crystal_checkout_coupon");
+      let discountAmount = 0;
+      let couponCode = "";
+      if (storedCouponStr) {
+        try {
+          const couponObj = JSON.parse(storedCouponStr);
+          discountAmount = couponObj.discount_amount || 0;
+          couponCode = couponObj.code || "";
+        } catch { /* ignore */ }
+      }
+
+      const total = Math.max(0, calculatedSubtotal - discountAmount) + shippingCost;
 
       // 2. Create order in backend → also creates Razorpay order
       const { api } = await import("@/src/lib/inkstone-api");
@@ -91,25 +157,20 @@ export default function PaymentPage() {
         payment_method: "Razorpay",
         shipping_address: delivery.address,
         attachment_url: attachmentUrl,
-        items: [
-          {
-            product_id: product.id,
-            name: product.name,
-            price: unitPrice,
-            quantity: delivery.quantity ?? quantity,
-          },
-        ],
+        coupon_code: couponCode,
+        discount_amount: discountAmount,
+        items: orderItems,
       });
 
       // 3. Open Razorpay modal
       await new Promise<void>((resolve, reject) => {
+        const keyId = RZP_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_TT5aIG5SUGgmA2";
         const options: Record<string, unknown> = {
-          key: RZP_KEY_ID,
-          amount: orderResp.amount,   // paise from backend
-          currency: orderResp.currency,
-          name: "Crystal Store",
-          description: product.name,
-          order_id: orderResp.razorpay_order_id,
+          key: keyId,
+          amount: orderResp.amount, // paise from backend
+          currency: orderResp.currency || "INR",
+          name: "InkStone Crystals",
+          description: orderItems.length === 1 ? orderItems[0].name : `${orderItems.length} items from InkStone`,
           prefill: {
             name: delivery.name,
             email: delivery.email,
@@ -120,20 +181,30 @@ export default function PaymentPage() {
           // 4. On success: verify signature with our backend
           handler: async (response: {
             razorpay_payment_id: string;
-            razorpay_order_id: string;
-            razorpay_signature: string;
+            razorpay_order_id?: string;
+            razorpay_signature?: string;
           }) => {
             try {
-              await api.verifyPayment({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              });
+              if (response.razorpay_payment_id) {
+                await api.verifyPayment({
+                  razorpay_order_id: response.razorpay_order_id || orderResp.razorpay_order_id || orderResp.order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature || "",
+                });
+              }
 
-              // Clear checkout state
+              // Clear checkout state & cart
               sessionStorage.removeItem("crystal_checkout_product");
+              sessionStorage.removeItem("crystal_checkout_items");
+              sessionStorage.removeItem("crystal_cart_items");
               sessionStorage.removeItem("crystal_checkout_delivery");
               sessionStorage.removeItem("crystal_checkout_attachment");
+              sessionStorage.removeItem("crystal_checkout_coupon");
+
+              try {
+                localStorage.removeItem("inkstone_local_cart");
+                window.dispatchEvent(new Event("inkstone-cart-change"));
+              } catch { /* ignore */ }
 
               resolve();
             } catch (err) {
@@ -147,6 +218,11 @@ export default function PaymentPage() {
             },
           },
         };
+
+        // Pass order_id ONLY when it's a real order from Razorpay API
+        if (orderResp.razorpay_order_id && orderResp.razorpay_order_id.length >= 18) {
+          options.order_id = orderResp.razorpay_order_id;
+        }
 
         const rzp = new (window as any).Razorpay(options);
 
@@ -164,7 +240,7 @@ export default function PaymentPage() {
     }
   };
 
-  if (!product) {
+  if (checkoutItems.length === 0 && !product) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5 py-20">
         <div className="w-full max-w-md border border-black/10 bg-white p-8 text-center">
@@ -179,8 +255,9 @@ export default function PaymentPage() {
     );
   }
 
-  const unitPrice = getProductPrice(product);
-  const subtotal = unitPrice * quantity;
+  const subtotal = checkoutItems.length > 0
+    ? checkoutItems.reduce((acc, item) => acc + getProductPrice(item.product) * item.quantity, 0)
+    : product ? getProductPrice(product) * quantity : 0;
   const total = subtotal + shippingCost;
 
   return (
@@ -264,23 +341,46 @@ export default function PaymentPage() {
 
           {/* Order summary */}
           <aside className="h-fit border border-black/10 bg-white p-6 sm:p-8 lg:sticky lg:top-24 shadow-sm">
-            <h2 className="mb-6 text-xl font-black">Order summary</h2>
-            <div className="flex gap-4 border-b border-black/10 pb-6">
-              <div className="h-24 w-24 shrink-0 overflow-hidden bg-[#f2f2f2]">
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-3xl font-bold text-neutral-300">C</div>
-                )}
+            <h2 className="mb-4 text-xl font-black">Order summary</h2>
+            
+            {checkoutItems.length > 1 ? (
+              <div className="max-h-[260px] overflow-y-auto divide-y divide-black/10 border-b border-black/10 pb-4 space-y-3 pr-1">
+                {checkoutItems.map((item, idx) => (
+                  <div key={item.product.id || idx} className="flex gap-3 pt-3 first:pt-0">
+                    <div className="h-16 w-16 shrink-0 overflow-hidden bg-[#f2f2f2] rounded-xl">
+                      {item.product.image_url ? (
+                        <img src={item.product.image_url} alt={item.product.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xl font-bold text-neutral-300">C</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-bold text-xs">{item.product.name}</h3>
+                      <p className="text-[11px] text-neutral-500">Qty: {item.quantity}</p>
+                      <p className="mt-1 text-xs font-semibold">Rs. {(getProductPrice(item.product) * item.quantity).toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="min-w-0">
-                <h3 className="truncate font-bold">{product.name}</h3>
-                <p className="mt-1 text-xs text-neutral-500">{product.category?.name || "Ready Stock"}</p>
-                <p className="mt-3 font-semibold">Rs. {unitPrice}</p>
-                {typeof product.offer_price === "number" && <p className="text-xs text-neutral-400 line-through">Rs. {product.price}</p>}
-                <p className="mt-1 text-xs text-neutral-500">Qty: {quantity}</p>
-              </div>
-            </div>
+            ) : (
+              product && (
+                <div className="flex gap-4 border-b border-black/10 pb-6">
+                  <div className="h-20 w-20 shrink-0 overflow-hidden bg-[#f2f2f2] rounded-xl">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-3xl font-bold text-neutral-300">C</div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-bold text-sm">{product.name}</h3>
+                    <p className="mt-0.5 text-xs text-neutral-500">{product.category?.name || "Ready Stock"}</p>
+                    <p className="mt-2 font-semibold text-sm">Rs. {getProductPrice(product)}</p>
+                    <p className="text-xs text-neutral-500">Qty: {checkoutItems[0]?.quantity ?? quantity}</p>
+                  </div>
+                </div>
+              )
+            )}
 
             <div className="mt-6 space-y-3 text-sm">
               <div className="flex justify-between">

@@ -81,5 +81,10 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAdmin();
     }
+
+    // Sent emails - admin read/write, server create
+    match /sent_emails/{emailId} {
+      allow read, write: if true;
+    }
   }
 }

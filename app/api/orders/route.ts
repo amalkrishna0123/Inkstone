@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import Razorpay from "razorpay";
 import { db } from "@/src/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+const RAZORPAY_KEY_ID =
+  process.env.RAZORPAY_KEY_ID ||
+  process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
+  "rzp_test_TT5aIG5SUGgmA2";
+const RAZORPAY_KEY_SECRET =
+  process.env.RAZORPAY_KEY_SECRET || "JvrkG9oyButY0z8RNXiJjIZ0";
 
 export const dynamic = "force-dynamic";
 
@@ -24,28 +27,42 @@ export async function POST(req: Request) {
     const orderId = `CR-${Math.random().toString(16).substring(2, 8).toUpperCase()}`;
     let rzOrderId = "";
 
+    // Create real order in Razorpay
     if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
       try {
-        const razorpay = new Razorpay({
-          key_id: RAZORPAY_KEY_ID,
-          key_secret: RAZORPAY_KEY_SECRET,
+        const authHeader =
+          "Basic " +
+          Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
+
+        const rzRes = await fetch("https://api.razorpay.com/v1/orders", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: authHeader,
+          },
+          body: JSON.stringify({
+            amount: amountPaise,
+            currency: "INR",
+            receipt: orderId,
+            payment_capture: 1,
+          }),
         });
 
-        const rzOrder: any = await razorpay.orders.create({
-          amount: amountPaise,
-          currency: "INR",
-          receipt: orderId,
-          payment_capture: true as any,
-        });
-        rzOrderId = rzOrder?.id || "";
+        if (rzRes.ok) {
+          const rzData = await rzRes.json();
+          rzOrderId = rzData.id || "";
+        } else {
+          const errData = await rzRes.text();
+          console.warn("Razorpay API order creation error:", rzRes.status, errData);
+        }
       } catch (rzErr: any) {
-        console.warn("Razorpay order creation warning:", rzErr.message);
-        // If razorpay test keys fail, generate a fallback order id so checkout doesn't break
-        rzOrderId = `order_${Math.random().toString(36).substring(2, 14)}`;
+        console.warn("Razorpay order creation network warning:", rzErr.message);
       }
-    } else {
-      rzOrderId = `order_${Math.random().toString(36).substring(2, 14)}`;
     }
+
+    const now = new Date();
+    const deliveryDate = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+    const expectedDeliveryDateISO = deliveryDate.toISOString();
 
     const orderDoc = {
       order_id: orderId,
@@ -62,7 +79,8 @@ export async function POST(req: Request) {
       razorpay_order_id: rzOrderId,
       razorpay_payment_id: "",
       razorpay_signature: "",
-      created_at: new Date().toISOString(),
+      created_at: now.toISOString(),
+      expected_delivery_date: expectedDeliveryDateISO,
       user_id: data.user_id || null,
     };
 

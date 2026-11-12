@@ -412,13 +412,17 @@ function ProductCard({
   onQuickAddToCart: (p: Product, e: React.MouseEvent) => void;
   onBuyNow: (p: Product) => void;
 }) {
+  const router = useRouter();
   const isWishlisted = wishlistIds.includes(product.id);
   const isJustAdded = cartSuccessId === product.id;
   const hasOffer = typeof product.offer_price === "number" && typeof product.discount_percent === "number";
   const displayPrice = hasOffer ? (product.offer_price as number) : product.price;
 
   return (
-    <article className="group relative h-[420px] w-full overflow-hidden rounded-3xl bg-neutral-100 shadow-sm transition hover:shadow-md">
+    <article
+      onClick={() => router.push(`/product/${product.id}`)}
+      className="group relative h-[420px] w-full overflow-hidden rounded-3xl bg-neutral-100 shadow-sm transition hover:shadow-md cursor-pointer"
+    >
       {/* Product Image */}
       <div className="h-full w-full transition-transform duration-500 group-hover:scale-105">
         {product.image_url ? (
@@ -428,8 +432,8 @@ function ProductCard({
         )}
       </div>
 
-      {/* Dark overlay on hover */}
-      <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      {/* Permanent readable gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
 
       {/* Type badge — top left */}
       <span className={`absolute left-4 top-4 z-30 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm ${
@@ -444,7 +448,7 @@ function ProductCard({
           type="button"
           onClick={(e) => onToggleWishlist(product, e)}
           title={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-          className={`flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-md transition-all duration-200 hover:scale-110 ${
+          className={`flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-md transition-all duration-200 hover:scale-110 cursor-pointer ${
             isWishlisted ? "bg-white text-red-500 shadow-md" : "bg-black/30 text-white hover:bg-white hover:text-red-500"
           }`}
         >
@@ -455,7 +459,7 @@ function ProductCard({
           type="button"
           onClick={(e) => onQuickAddToCart(product, e)}
           title="Add to cart"
-          className={`flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 ${
+          className={`flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 cursor-pointer ${
             isJustAdded ? "bg-emerald-500 text-white" : "bg-[#ffea00] text-black shadow-md hover:bg-neutral-900 hover:text-[#ffea00]"
           }`}
         >
@@ -469,19 +473,8 @@ function ProductCard({
         </span>
       )}
 
-      {/* View Product — hover centre */}
-      <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-all duration-300 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
-        <Link
-          href={`/product/${product.id}`}
-          className="flex items-center gap-2.5 rounded-full bg-white px-5 py-2.5 text-xs sm:text-sm font-semibold text-black shadow-xl transition hover:scale-105 hover:bg-[#ffea00]"
-        >
-          <MdOutlineVisibility className="text-base" />
-          View Details
-        </Link>
-      </div>
-
-      {/* Product name & category — hidden on hover */}
-      <div className="absolute inset-x-0 bottom-[80px] px-5 text-white transition-opacity duration-300 group-hover:opacity-0 pointer-events-none">
+      {/* Product name & category — always visible and legible */}
+      <div className="absolute inset-x-0 bottom-[74px] px-5 text-white pointer-events-none">
         <p className="truncate text-lg font-bold drop-shadow-md">{product.name}</p>
         <p className="mt-1 flex min-w-0 items-center gap-2 text-xs text-white/90 drop-shadow-md">
           {product.category ? (
@@ -499,19 +492,22 @@ function ProductCard({
         </p>
       </div>
 
-      {/* Bottom bar: action + price — hidden on hover */}
-      <div className="absolute bottom-1 z-10 flex w-full items-center justify-between px-5 pb-5 transition-opacity duration-300 group-hover:opacity-0">
+      {/* Bottom bar: action + price */}
+      <div className="absolute bottom-1 z-10 flex w-full items-center justify-between px-5 pb-4">
         <button
           type="button"
-          onClick={() => onBuyNow(product)}
-          className="flex items-center justify-between gap-2 rounded-3xl bg-white/80 py-1.5 pl-4 pr-2 text-xs font-bold text-black backdrop-blur-md transition hover:bg-white"
+          onClick={(e) => {
+            e.stopPropagation();
+            onBuyNow(product);
+          }}
+          className="flex items-center justify-between gap-2 rounded-3xl bg-white/90 py-1.5 pl-4 pr-2 text-xs font-bold text-black backdrop-blur-md transition hover:bg-white hover:scale-105 cursor-pointer shadow-sm"
         >
           {isCustom ? "Customize & Buy" : "Buy Now"}
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ffea00] p-1 text-black">
             <FaArrowRight className="text-xs" />
           </span>
         </button>
-        <span className="flex items-center gap-0.5 rounded-3xl bg-black px-4 py-2 text-xs font-bold text-white">
+        <span className="flex items-center gap-0.5 rounded-3xl bg-black/90 px-4 py-2 text-xs font-bold text-white shadow-sm">
           <TbCurrencyRupee className="text-[#ffea00]" />
           {displayPrice.toLocaleString("en-IN")}
         </span>

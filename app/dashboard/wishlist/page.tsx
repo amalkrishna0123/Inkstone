@@ -118,15 +118,15 @@ export default function WishlistPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col gap-4 border-b border-neutral-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 border-b border-neutral-100 pb-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center md:justify-left gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-500">
               <LuHeart className="text-xl fill-red-500" />
             </span>
-            <h1 className="text-3xl font-bold tracking-tight text-neutral-900">My Wishlist</h1>
+            <h1 className="text-3xl font-medium text-center md:text-left tracking-[-1px] text-neutral-900">My Wishlist</h1>
           </div>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-1 text-sm text-neutral-500 text-center md:text-left">
             {items.length} {items.length === 1 ? "item" : "items"} saved for later
           </p>
         </div>

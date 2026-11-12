@@ -1,16 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { FiActivity, FiBarChart2, FiBell, FiChevronRight, FiCreditCard, FiDownload, FiFileText, FiImage, FiLayers, FiLogOut, FiMenu, FiMessageCircle, FiPackage, FiRefreshCw, FiSettings, FiShoppingBag, FiTag, FiTrash2, FiTruck, FiUsers, FiX } from "react-icons/fi";
-import { AdminUser, api, Banner, Category, Overview, Product, Order, Coupon } from "@/src/lib/inkstone-api";
+import { FiActivity, FiBarChart2, FiBell, FiChevronRight, FiCreditCard, FiDownload, FiFileText, FiImage, FiLayers, FiLogOut, FiMenu, FiMessageCircle, FiPackage, FiRefreshCw, FiSettings, FiShoppingBag, FiTag, FiTrash2, FiTruck, FiUsers, FiX, FiMail, FiSend, FiGift, FiAward, FiCheck, FiPlus, FiAlertCircle } from "react-icons/fi";
+import { TbSparkles, TbTruckDelivery, TbMailCheck } from "react-icons/tb";
+import { AdminUser, api, Banner, Category, Overview, Product, Order, Coupon, ScratchCard } from "@/src/lib/inkstone-api";
+import { collection, getDocs, query, orderBy, limit, addDoc } from "firebase/firestore";
+import { db } from "@/src/lib/firebase";
+import MarketingPanel, { CustomerEntry } from "./MarketingPanel";
 
-type Tab = "overview" | "products" | "categories" | "orders" | "users" | "marketing" | "messages" | "transactions" | "wallet" | "coupon" | "reports" | "shipping" | "settings" | "banners";
+type Tab = "overview" | "products" | "categories" | "orders" | "users" | "marketing" | "messages" | "transactions" | "wallet" | "coupon" | "reports" | "shipping" | "settings" | "banners" | "banner";
 type NavigationItem = { id: Tab; label: string; icon: React.ReactNode };
-const allTabIds: Tab[] = ["overview", "products", "categories", "orders", "users", "marketing", "messages", "transactions", "wallet", "coupon", "reports", "shipping", "settings", "banners"];
+const allTabIds: Tab[] = ["overview", "products", "categories", "orders", "users", "marketing", "messages", "transactions", "wallet", "coupon", "reports", "shipping", "settings", "banners", "banner"];
 const navigationGroups: { label: string; items: NavigationItem[] }[] = [
   { label: "Store", items: [{ id: "products", label: "Product", icon: <FiPackage /> }, { id: "categories", label: "Categories", icon: <FiLayers /> }, { id: "orders", label: "Orders", icon: <FiFileText /> }, { id: "users", label: "Customers", icon: <FiUsers /> }] },
-  { label: "Marketing", items: [{ id: "marketing", label: "Marketing", icon: <FiBarChart2 /> }, { id: "messages", label: "Messages", icon: <FiMessageCircle /> }, { id: "transactions", label: "Transactions", icon: <FiRefreshCw /> }, { id: "wallet", label: "Wallet", icon: <FiCreditCard /> }, { id: "coupon", label: "Coupon", icon: <FiTag /> }] },
+  { label: "Marketing", items: [{ id: "marketing", label: "Marketing", icon: <FiBarChart2 /> }, { id: "banners", label: "Banners", icon: <FiImage /> }, { id: "coupon", label: "Coupon", icon: <FiTag /> }, { id: "messages", label: "Messages", icon: <FiMessageCircle /> }, { id: "transactions", label: "Transactions", icon: <FiRefreshCw /> }, { id: "wallet", label: "Wallet", icon: <FiCreditCard /> }] },
   { label: "Operations", items: [{ id: "reports", label: "Reports", icon: <FiBarChart2 /> }, { id: "shipping", label: "Shipping", icon: <FiTruck /> }] },
   { label: "System", items: [{ id: "settings", label: "Settings", icon: <FiSettings /> }] },
 ];
@@ -31,7 +35,7 @@ export default function AdminDashboard() {
   const pathname = usePathname();
   const router = useRouter();
   const tabSegment = pathname.split("/").pop();
-  const tab: Tab = tabSegment === "admin" ? "overview" : allTabIds.includes(tabSegment as Tab) ? tabSegment as Tab : "overview";
+  const tab: Tab = tabSegment === "admin" ? "overview" : (tabSegment === "banner" || tabSegment === "banners") ? "banners" : allTabIds.includes(tabSegment as Tab) ? tabSegment as Tab : "overview";
   const [overview, setOverview] = useState(blankOverview);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,9 +50,52 @@ export default function AdminDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   function navigateToTab(nextTab: Tab) {
-    router.push(nextTab === "overview" ? "/admin" : `/admin/${nextTab}`);
+    router.push(nextTab === "overview" ? "/admin" : (nextTab === "banners" || nextTab === "banner") ? "/admin/banner" : `/admin/${nextTab}`);
     setMobileMenuOpen(false);
   }
+
+  const customers: CustomerEntry[] = useMemo(() => {
+    const map = new Map<string, CustomerEntry>();
+
+    users.forEach((u) => {
+      if (u.email && u.email.includes("@")) {
+        map.set(u.email.toLowerCase(), {
+          email: u.email,
+          name: u.name || u.email.split("@")[0],
+          is_staff: !!u.is_staff,
+          source: u.is_staff ? "Staff" : "Registered User",
+          orderCount: 0,
+          totalSpent: 0,
+        });
+      }
+    });
+
+    orders.forEach((o) => {
+      if (o.email && o.email.includes("@")) {
+        const key = o.email.toLowerCase();
+        const existing = map.get(key);
+        const orderTotal = typeof o.total === "number" ? o.total : parseFloat(o.total as any) || 0;
+        if (existing) {
+          existing.orderCount += 1;
+          existing.totalSpent += orderTotal;
+          if ((!existing.name || existing.name === existing.email.split("@")[0]) && o.name) {
+            existing.name = o.name;
+          }
+        } else {
+          map.set(key, {
+            email: o.email,
+            name: o.name || o.email.split("@")[0],
+            is_staff: false,
+            source: "Order Customer",
+            orderCount: 1,
+            totalSpent: orderTotal,
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }, [users, orders]);
 
   async function load() {
     setLoading(true); setError("");
@@ -77,8 +124,8 @@ export default function AdminDashboard() {
     return <main className="flex min-h-screen items-center justify-center bg-[#fff] px-5 py-16"><form onSubmit={signIn} className="w-full max-w-md border-2 border-black bg-white p-8 shadow-[8px_8px_0_#ffea00]"><div className="mb-10 flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center bg-[#ffea00] text-xl font-black">C</span><span className="text-xl font-bold tracking-tight">CRYSTAL<span className="text-[#c6b500]">.</span></span></div><p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">Control room</p><h1 className="mb-8 text-4xl font-bold tracking-tight">Admin sign in</h1>{error && <p className="mb-4 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}<label className="mb-4 block text-sm font-medium">Email<input suppressHydrationWarning className={`${input} mt-2`} required type="email" value={credentials.email} onChange={(event) => setCredentials({ ...credentials, email: event.target.value })} /></label><label className="mb-6 block text-sm font-medium">Password<input suppressHydrationWarning className={`${input} mt-2`} required type="password" value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} /></label><button className={`${button} w-full`} disabled={loading}>{loading ? "Checking..." : "Sign in"}</button></form></main>;
   }
 
-  const navigation = <nav className="space-y-6">{navigationGroups.map((group) => <div key={group.label}><p className="mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => <button key={item.id} onClick={() => navigateToTab(item.id)} className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition ${tab === item.id ? "bg-[#ffea00] text-black" : "text-neutral-600 hover:bg-neutral-100 hover:text-black"}`}>{item.icon}<span>{item.label}</span>{tab === item.id && <FiChevronRight className="ml-auto" />}</button>)}</div></div>)}</nav>;
-  return <main className="min-h-screen bg-[#f7f7f5] text-black"><header className="sticky top-0 z-30 border-b border-black/10 bg-white"><div className="flex h-18 items-center justify-between px-5 lg:px-8"><div className="flex items-center gap-3"><button className="flex h-10 w-10 items-center justify-center border border-black/10 lg:hidden" aria-label="Open navigation" onClick={() => setMobileMenuOpen(true)}><FiMenu /></button><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center bg-[#ffea00] text-lg font-black">C</span><span className="text-lg font-black tracking-tight">CRYSTAL<span className="text-[#b8a900]">.</span></span></div></div><div className="hidden max-w-md flex-1 px-10 md:block"><label className="relative block"><FiActivity className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" /><input className="w-full border border-black/10 bg-[#f7f7f5] py-3 pl-11 pr-4 text-sm outline-none focus:border-black" placeholder="Search your catalog" /></label></div><div className="flex items-center gap-4"><button className="relative text-xl" aria-label="Notifications"><FiBell /><span className="absolute -right-1 -top-1 h-2 w-2 bg-[#ffea00]" /></button><div className="hidden text-right sm:block"><p className="text-sm font-bold">{user.name || "Administrator"}</p><p className="text-xs text-neutral-500">Store manager</p></div><span className="flex h-10 w-10 items-center justify-center rounded-full bg-black text-xs font-bold text-[#ffea00]">{(user.name || user.email).slice(0, 2).toUpperCase()}</span></div></div></header><div className="flex"><aside className="fixed bottom-0 left-0 top-[72px] z-20 hidden w-64 shrink-0 overflow-y-auto border-r border-black/10 bg-white p-5 lg:block"><p className="mb-4 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Workspace</p>{navigation}<div className="mt-10 border-t border-black/10 pt-5"><button onClick={() => { api.logout(); setUser(null); }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-neutral-600 hover:bg-neutral-100 hover:text-black"><FiLogOut />Sign out</button></div></aside>{mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setMobileMenuOpen(false)}><aside className="h-full w-72 overflow-y-auto bg-white p-5" onClick={(event) => event.stopPropagation()}><div className="mb-10 flex items-center justify-between"><span className="text-lg font-black">CRYSTAL<span className="text-[#b8a900]">.</span></span><button aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)}><FiX className="text-xl" /></button></div>{navigation}</aside></div>}<section className="min-w-0 flex-1 px-5 py-7 lg:ml-64 lg:px-10 lg:py-9">{error && <div className="mb-5 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error} <button className="ml-3 underline" onClick={() => void load()}>Retry</button></div>}{loading ? <div className="border border-black/10 bg-white p-8 text-sm text-neutral-500">Loading dashboard...</div> : <>{tab === "overview" && <OverviewPanel overview={overview} select={navigateToTab} products={products} categories={categories} banners={banners} />}{tab === "categories" && <CategoriesPanel items={categories} refresh={load} />}{tab === "products" && <ProductsTablePanel items={products} categories={categories} refresh={load} />}{tab === "banners" && <BannersTablePanel items={banners} refresh={load} />}{tab === "users" && <UsersPanel items={users} />}{tab === "orders" && <OrdersTablePanel items={orders} refresh={load} />}{tab === "coupon" && <CouponsTablePanel items={coupons} refresh={load} />}{!["overview", "categories", "products", "banners", "users", "orders", "coupon"].includes(tab) && <ResourcePanel tab={tab} />}</>}</section></div></main>;
+  const navigation = <nav className="space-y-6">{navigationGroups.map((group) => <div key={group.label}><p className="mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const isActive = tab === item.id || (item.id === "banners" && (tabSegment === "banner" || tabSegment === "banners")); return <button key={item.id} onClick={() => navigateToTab(item.id)} className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition ${isActive ? "bg-[#ffea00] text-black" : "text-neutral-600 hover:bg-neutral-100 hover:text-black"}`}>{item.icon}<span>{item.label}</span>{isActive && <FiChevronRight className="ml-auto" />}</button>; })}</div></div>)}</nav>;
+  return <main className="min-h-screen bg-[#f7f7f5] text-black"><header className="sticky top-0 z-30 border-b border-black/10 bg-white"><div className="flex h-18 items-center justify-between px-5 lg:px-8"><div className="flex items-center gap-3"><button className="flex h-10 w-10 items-center justify-center border border-black/10 lg:hidden" aria-label="Open navigation" onClick={() => setMobileMenuOpen(true)}><FiMenu /></button><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center bg-[#ffea00] text-lg font-black">C</span><span className="text-lg font-black tracking-tight">CRYSTAL<span className="text-[#b8a900]">.</span></span></div></div><div className="hidden max-w-md flex-1 px-10 md:block"><label className="relative block"><FiActivity className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" /><input className="w-full border border-black/10 bg-[#f7f7f5] py-3 pl-11 pr-4 text-sm outline-none focus:border-black" placeholder="Search your catalog" /></label></div><div className="flex items-center gap-4"><button className="relative text-xl" aria-label="Notifications"><FiBell /><span className="absolute -right-1 -top-1 h-2 w-2 bg-[#ffea00]" /></button><div className="hidden text-right sm:block"><p className="text-sm font-bold">{user.name || "Administrator"}</p><p className="text-xs text-neutral-500">Store manager</p></div><span className="flex h-10 w-10 items-center justify-center rounded-full bg-black text-xs font-bold text-[#ffea00]">{(user.name || user.email).slice(0, 2).toUpperCase()}</span></div></div></header><div className="flex"><aside className="fixed bottom-0 left-0 top-[72px] z-20 hidden w-64 shrink-0 overflow-y-auto border-r border-black/10 bg-white p-5 lg:block"><p className="mb-4 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Workspace</p>{navigation}<div className="mt-10 border-t border-black/10 pt-5"><button onClick={() => { api.logout(); setUser(null); }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-neutral-600 hover:bg-neutral-100 hover:text-black"><FiLogOut />Sign out</button></div></aside>{mobileMenuOpen && <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setMobileMenuOpen(false)}><aside className="h-full w-72 overflow-y-auto bg-white p-5" onClick={(event) => event.stopPropagation()}><div className="mb-10 flex items-center justify-between"><span className="text-lg font-black">CRYSTAL<span className="text-[#b8a900]">.</span></span><button aria-label="Close navigation" onClick={() => setMobileMenuOpen(false)}><FiX className="text-xl" /></button></div>{navigation}</aside></div>}<section className="min-w-0 flex-1 px-5 py-7 lg:ml-64 lg:px-10 lg:py-9">{error && <div className="mb-5 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error} <button className="ml-3 underline" onClick={() => void load()}>Retry</button></div>}{loading ? <div className="border border-black/10 bg-white p-8 text-sm text-neutral-500">Loading dashboard...</div> : <>{tab === "overview" && <OverviewPanel overview={overview} select={navigateToTab} products={products} categories={categories} banners={banners} />}{tab === "categories" && <CategoriesPanel items={categories} refresh={load} />}{tab === "products" && <ProductsTablePanel items={products} categories={categories} refresh={load} />}{tab === "banners" && <BannersTablePanel items={banners} refresh={load} customers={customers} />}{tab === "users" && <UsersPanel items={users} />}{tab === "orders" && <OrdersTablePanel items={orders} refresh={load} />}{tab === "coupon" && <CouponsTablePanel items={coupons} refresh={load} customers={customers} />}{tab === "marketing" && <MarketingPanel users={users} orders={orders} banners={banners} coupons={coupons} customers={customers} />}{!["overview", "categories", "products", "banners", "users", "orders", "coupon", "marketing"].includes(tab) && <ResourcePanel tab={tab} />}</>}</section></div></main>;
 }
 
 function Header({ title, description }: { title: string; description: string }) { return <div className="mb-7"><p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#8d8300]">Crystal commerce</p><h2 className="text-3xl font-black tracking-tight sm:text-4xl">{title}</h2><p className="mt-2 text-sm text-neutral-500">{description}</p></div>; }
@@ -650,9 +697,12 @@ function toDateTimeLocal(value: string) {
   return localDate.toISOString().slice(0, 16);
 }
 
-function BannersTablePanel({ items, refresh }: { items: Banner[]; refresh: () => Promise<void> }) {
+function BannersTablePanel({ items, refresh, customers = [] }: { items: Banner[]; refresh: () => Promise<void>; customers?: CustomerEntry[] }) {
   const [form, setForm] = useState({ title: "", subtitle: "", image_url: "", link_url: "", starts_at: "", ends_at: "" });
   const [saving, setSaving] = useState(false);
+  const [sendEmailOnSave, setSendEmailOnSave] = useState(false);
+  const [sendingBannerId, setSendingBannerId] = useState<string | null>(null);
+  const [bannerNotice, setBannerNotice] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formError, setFormError] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -677,6 +727,7 @@ function BannersTablePanel({ items, refresh }: { items: Banner[]; refresh: () =>
     setUploadPreviewUrl("");
     setFormError("");
     setPreviewError(false);
+    setSendEmailOnSave(false);
   }
 
   function closeModal() {
@@ -706,14 +757,47 @@ function BannersTablePanel({ items, refresh }: { items: Banner[]; refresh: () =>
     setUploadPreviewUrl("");
     setFormError("");
     setPreviewError(false);
+    setSendEmailOnSave(false);
     setEditingBanner(banner);
     setIsModalOpen(true);
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function sendOneClickBannerEmail(banner: Banner) {
+    const validRecipients = customers.filter((c) => c.email && c.email.includes("@"));
+    if (validRecipients.length === 0) {
+      setBannerNotice({ text: "No customer email addresses found to send emails.", type: "error" });
+      return;
+    }
+    if (!window.confirm(`One-Click Send: Send promotional announcement for banner "${banner.title}" to all ${validRecipients.length} customer(s)?`)) {
+      return;
+    }
+    setSendingBannerId(banner.id);
+    setBannerNotice(null);
+    try {
+      await api.sendBatchPromotionalEmail({
+        recipients: validRecipients.map((c) => ({ email: c.email, name: c.name })),
+        subject: `Featured Collection: ${banner.title}`,
+        title: banner.title,
+        message: banner.subtitle ? `${banner.subtitle}\n\nExplore our latest crystal arrivals at InkStone Crystals!` : "Discover our newest crystal additions and limited edition creations today at InkStone Crystals!",
+        banner_url: banner.image_url,
+        cta_url: banner.link_url || "https://inkstone-zeta.vercel.app/product",
+      });
+      setBannerNotice({
+        text: `Promotional email for banner "${banner.title}" successfully sent to ${validRecipients.length} customer(s)!`,
+        type: "success",
+      });
+    } catch (err: any) {
+      setBannerNotice({ text: `Failed to send email: ${err.message}`, type: "error" });
+    } finally {
+      setSendingBannerId(null);
+    }
+  }
+
+  async function submit(event: FormEvent, shouldSendMail = false) {
+    if (event?.preventDefault) event.preventDefault();
     setSaving(true);
     setFormError("");
+    setBannerNotice(null);
     try {
       let imageUrl = form.image_url;
       if (imageMode === "upload") {
@@ -734,6 +818,33 @@ function BannersTablePanel({ items, refresh }: { items: Banner[]; refresh: () =>
       } else {
         await api.createBanner(bannerData);
       }
+
+      let emailNoticeText = "";
+      if (shouldSendMail || sendEmailOnSave) {
+        const validRecipients = customers.filter((c) => c.email && c.email.includes("@"));
+        if (validRecipients.length > 0) {
+          try {
+            await api.sendBatchPromotionalEmail({
+              recipients: validRecipients.map((c) => ({ email: c.email, name: c.name })),
+              subject: `Featured Collection: ${bannerData.title}`,
+              title: bannerData.title,
+              message: bannerData.subtitle ? `${bannerData.subtitle}\n\nExplore our newest collections at InkStone Crystals!` : "Discover our latest additions and special offers today at InkStone Crystals!",
+              banner_url: imageUrl,
+              cta_url: bannerData.link_url || "/product",
+            });
+            emailNoticeText = ` & promotional email sent to ${validRecipients.length} customer(s)!`;
+          } catch (mailErr: any) {
+            console.warn("Banner auto-send mail error:", mailErr);
+            emailNoticeText = ` (Banner saved, but email sending failed: ${mailErr.message})`;
+          }
+        }
+      }
+
+      setBannerNotice({
+        text: `Banner successfully ${editingBanner ? "updated" : "created"}${emailNoticeText}`,
+        type: "success",
+      });
+
       resetForm();
       setIsModalOpen(false);
       setEditingBanner(null);
@@ -759,32 +870,51 @@ function BannersTablePanel({ items, refresh }: { items: Banner[]; refresh: () =>
 
   return <>
     <div className="mb-6 flex items-start justify-between gap-4">
-      <Header title="Offer banners" description="Control promotional banners shown across the storefront." />
+      <Header title="Offer banners" description="Control promotional banners shown across the storefront. Broadcast to customers in one click." />
       <button className={`${button} shrink-0`} onClick={openCreateModal}>Add Banner</button>
     </div>
+    {bannerNotice && (
+      <div className={`mb-4 flex items-center justify-between p-3.5 text-xs font-semibold ${bannerNotice.type === "success" ? "border border-emerald-300 bg-emerald-50 text-emerald-900" : "border border-red-300 bg-red-50 text-red-900"}`}>
+        <span>{bannerNotice.text}</span>
+        <button onClick={() => setBannerNotice(null)} className="text-neutral-500 hover:text-black">&times;</button>
+      </div>
+    )}
     {deleteError && <p className="mb-4 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{deleteError}</p>}
     <div className="overflow-x-auto border border-neutral-200 bg-white">
-      <table className="w-full min-w-[900px] text-left text-sm">
+      <table className="w-full min-w-[950px] text-left text-sm">
         <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500">
           <tr><th className="p-4">Image</th><th className="p-4">Title</th><th className="p-4">Link</th><th className="p-4">Starts</th><th className="p-4">Ends</th><th className="p-4">Status</th><th className="p-4 text-right">Action</th></tr>
         </thead>
         <tbody>
-          {items.length === 0 ? <tr><td className="p-8 text-center text-neutral-500" colSpan={7}>No banners yet.</td></tr> : items.map((item) => <tr key={item.id} className="border-b border-neutral-100 last:border-0">
+          {items.length === 0 ? <tr><td className="p-8 text-center text-neutral-500" colSpan={7}>No banners yet.</td></tr> : items.map((item) => <tr key={item.id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50/50">
             <td className="p-4">{item.image_url ? <img src={item.image_url} alt="" className="h-12 w-20 object-cover" /> : <span className="text-neutral-400">-</span>}</td>
             <td className="p-4"><p className="font-medium">{item.title}</p><p className="max-w-xs truncate text-xs text-neutral-500">{item.subtitle || "-"}</p></td>
             <td className="max-w-[180px] truncate p-4 text-neutral-500">{item.link_url || "-"}</td>
             <td className="p-4 text-neutral-500">{new Date(item.starts_at).toLocaleString()}</td>
             <td className="p-4 text-neutral-500">{new Date(item.ends_at).toLocaleString()}</td>
-            <td className="p-4">{item.is_active ? "Active" : "Inactive"}</td>
-            <td className="p-4 text-right"><div className="flex justify-end gap-3"><button onClick={() => openEditModal(item)} className="text-sm text-neutral-700 hover:underline">Edit</button><button onClick={() => void remove(item.id)} className="text-sm text-red-600 hover:underline">Delete</button></div></td>
+            <td className="p-4">{item.is_active ? <span className="text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 border border-emerald-200 text-xs">Active</span> : <span className="text-neutral-500 text-xs">Inactive</span>}</td>
+            <td className="p-4 text-right">
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => void sendOneClickBannerEmail(item)}
+                  disabled={sendingBannerId === item.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[#ffea00] text-black hover:bg-black hover:text-white transition rounded shadow-xs disabled:opacity-50"
+                  title="Send promotional announcement email for this banner to all customers in 1 click"
+                >
+                  <FiSend className="text-xs" /> {sendingBannerId === item.id ? "Sending..." : "Send Mail"}
+                </button>
+                <button onClick={() => openEditModal(item)} className="text-xs font-medium text-neutral-700 hover:underline px-2 py-1">Edit</button>
+                <button onClick={() => void remove(item.id)} className="text-xs font-medium text-red-600 hover:underline px-2 py-1">Delete</button>
+              </div>
+            </td>
           </tr>)}
         </tbody>
       </table>
     </div>
     {isModalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-5 py-8" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
       <div className="max-h-full w-full max-w-2xl overflow-y-auto border border-neutral-200 bg-white p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="banner-modal-title">
-        <div className="mb-5 flex items-start justify-between gap-4"><div><h3 id="banner-modal-title" className="text-xl font-semibold">{editingBanner ? "Edit Banner" : "Add Banner"}</h3><p className="mt-1 text-sm text-neutral-500">{editingBanner ? "Update the banner details and display dates." : "Create a banner with start and end dates."}</p></div><button type="button" className="text-2xl leading-none text-neutral-500 hover:text-neutral-950" aria-label="Close dialog" onClick={closeModal}>&times;</button></div>
-        <form onSubmit={submit}>
+        <div className="mb-5 flex items-start justify-between gap-4"><div><h3 id="banner-modal-title" className="text-xl font-semibold">{editingBanner ? "Edit Banner" : "Add Banner"}</h3><p className="mt-1 text-sm text-neutral-500">{editingBanner ? "Update the banner details and display dates." : "Create a banner and optionally notify all customers via email."}</p></div><button type="button" className="text-2xl leading-none text-neutral-500 hover:text-neutral-950" aria-label="Close dialog" onClick={closeModal}>&times;</button></div>
+        <form onSubmit={(e) => void submit(e, false)}>
           {formError && <p className="mb-4 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{formError}</p>}
           <input className={`${input} mb-3`} required placeholder="Title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
           <input className={`${input} mb-3`} placeholder="Subtitle" value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} />
@@ -798,14 +928,39 @@ function BannersTablePanel({ items, refresh }: { items: Banner[]; refresh: () =>
           {imageMode === "url" ? <input className={`${input} mb-3`} required type="url" placeholder="Image URL" value={form.image_url} onChange={(event) => { setForm({ ...form, image_url: event.target.value }); setPreviewError(false); }} /> : <div className="mb-3"><input className={`${input} mb-1`} required={imageMode === "upload" && !editingBanner?.image_url} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0] ?? null; setSelectedImage(file); setUploadPreviewUrl(file ? URL.createObjectURL(file) : ""); setPreviewError(false); }} /><p className="text-xs text-neutral-500">JPG, PNG, WEBP, or GIF up to 5 MB{selectedImage ? `: ${selectedImage.name}` : ""}</p></div>}
           <div className="mb-3 flex min-h-28 items-center gap-4 border border-dashed border-neutral-300 bg-neutral-50 p-3">
             {previewUrl && !previewError ? <img src={previewUrl} alt="Banner preview" className="h-24 w-40 shrink-0 object-cover" onError={() => setPreviewError(true)} /> : <div className="flex h-24 w-40 shrink-0 items-center justify-center border border-neutral-200 bg-white text-center text-xs text-neutral-400">{previewError ? "Preview unavailable" : "No image selected"}</div>}
-            <div className="min-w-0"><p className="text-sm font-medium">Image preview</p><p className="mt-1 break-words text-xs text-neutral-500">{previewError ? "Check the image URL or choose another file." : previewUrl ? "This image will appear in the banner table." : "Choose an image or paste a URL to preview it here."}</p></div>
+            <div className="min-w-0"><p className="text-sm font-medium">Image preview</p><p className="mt-1 break-words text-xs text-neutral-500">{previewError ? "Check the image URL or choose another file." : previewUrl ? "This image will appear in the banner table and promotional email." : "Choose an image or paste a URL to preview it here."}</p></div>
           </div>
           <input className={`${input} mb-3`} type="url" placeholder="Link URL" value={form.link_url} onChange={(event) => setForm({ ...form, link_url: event.target.value })} />
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 mb-4">
             <label className="block text-xs text-neutral-500">Starts<input className={`${input} mt-1`} required type="datetime-local" value={form.starts_at} onChange={(event) => setForm({ ...form, starts_at: event.target.value })} /></label>
             <label className="block text-xs text-neutral-500">Ends<input className={`${input} mt-1`} required type="datetime-local" value={form.ends_at} onChange={(event) => setForm({ ...form, ends_at: event.target.value })} /></label>
           </div>
-          <div className="mt-5 flex justify-end gap-3"><button type="button" className="border border-neutral-300 px-4 py-2.5 text-sm hover:bg-neutral-100" onClick={closeModal}>Cancel</button><button className={button} disabled={saving}>{saving ? "Saving..." : editingBanner ? "Save changes" : "Create banner"}</button></div>
+
+          <label className="mb-5 flex items-center gap-2.5 p-3 rounded border border-yellow-300 bg-[#fffde6] text-xs font-semibold text-neutral-800 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sendEmailOnSave}
+              onChange={(e) => setSendEmailOnSave(e.target.checked)}
+              className="h-4 w-4 accent-black"
+            />
+            <span>
+              <strong>Send promotional announcement email to all customers ({customers.length})</strong> in 1 click upon saving
+            </span>
+          </label>
+
+          <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+            <button type="button" className="border border-neutral-300 px-4 py-2.5 text-xs font-semibold hover:bg-neutral-100" onClick={closeModal}>Cancel</button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={(e) => void submit(e, true)}
+              className="flex items-center gap-2 bg-black px-4 py-2.5 text-xs font-bold text-[#ffea00] hover:bg-[#ffea00] hover:text-black transition disabled:opacity-50 shadow-sm"
+              title="Save this banner and immediately broadcast promotional email to all customers with 1 click"
+            >
+              <FiSend className="text-xs" /> {saving ? "Processing..." : "Save & Send Email to Customers"}
+            </button>
+            <button className={button} disabled={saving}>{saving ? "Saving..." : editingBanner ? "Save changes" : "Create banner"}</button>
+          </div>
         </form>
       </div>
     </div>}

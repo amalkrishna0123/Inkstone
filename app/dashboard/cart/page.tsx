@@ -152,7 +152,39 @@ export default function CartPage() {
   }
 
   function handleCheckout() {
+    if (items.length === 0) return;
+
+    // Save full items list for checkout
     sessionStorage.setItem("crystal_cart_items", JSON.stringify(items));
+    sessionStorage.setItem(
+      "crystal_checkout_items",
+      JSON.stringify(
+        items.map((i) => ({
+          product: i.product,
+          quantity: i.quantity,
+        }))
+      )
+    );
+
+    // Fallback for single-product checkout compatibility
+    sessionStorage.setItem(
+      "crystal_checkout_product",
+      JSON.stringify(items[0].product)
+    );
+    sessionStorage.setItem("crystal_checkout_quantity", String(items[0].quantity));
+
+    // Forward coupon if applied
+    if (couponApplied) {
+      sessionStorage.setItem(
+        "crystal_checkout_coupon",
+        JSON.stringify({
+          code: coupon.trim().toUpperCase() || "CRYSTAL10",
+          discount_percent: 10,
+          discount_amount: discount,
+        })
+      );
+    }
+
     router.push("/checkout");
   }
 
@@ -175,7 +207,7 @@ export default function CartPage() {
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fffbcc] text-[#4a5c3a]">
               <LuShoppingCart className="text-xl" />
             </span>
-            <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+            <h1 className="text-3xl font-medium tracking-[-1px] text-neutral-900">
               My Cart
             </h1>
           </div>

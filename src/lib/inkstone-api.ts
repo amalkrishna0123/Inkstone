@@ -16,6 +16,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   serverTimestamp,
 } from "firebase/firestore";
 import { auth, db, googleProvider } from "./firebase";
@@ -102,13 +103,25 @@ export type Address = {
 
 export type Review = {
   id: string;
+  user_id?: string;
+  user_email?: string;
   user_name: string;
   product_id: string;
   order_id: string;
   rating: number;
   quality_rating: number;
+  title?: string;
   comment: string;
+  verified_purchase?: boolean;
   created_at?: string;
+};
+
+export type ReviewEligibility = {
+  canReview: boolean;
+  reason?: "not_logged_in" | "not_purchased" | "not_delivered" | "already_reviewed";
+  message: string;
+  order?: Order;
+  existingReview?: Review;
 };
 
 export type PendingReviewItem = {
@@ -136,10 +149,25 @@ export type Order = {
   coupon_code?: string;
   discount_amount?: number;
   created_at: string;
+  expected_delivery_date?: string;
   user_id?: string;
   razorpay_order_id?: string;
   amount?: number;
   currency?: string;
+};
+
+export type ScratchCard = {
+  id: string;
+  user_id: string;
+  user_email?: string;
+  user_name?: string;
+  coupon_code: string;
+  discount_percent: number;
+  min_purchase?: number;
+  event_name: string;
+  is_scratched: boolean;
+  scratched_at?: string;
+  created_at: string;
 };
 
 type AuthResponse = {
@@ -1094,7 +1122,11 @@ export const api = {
     const totalINR = Number(data.total || 0);
     const amountPaise = Math.round(totalINR * 100);
     const orderId = `CR-${Math.random().toString(16).substring(2, 8).toUpperCase()}`;
-    const rzOrderId = `order_${Math.random().toString(36).substring(2, 14)}`;
+    const rzOrderId = "";
+
+    const now = new Date();
+    const deliveryDate = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+    const expectedDeliveryDateISO = deliveryDate.toISOString();
 
     const orderObj: any = {
       order_id: orderId,
@@ -1108,7 +1140,8 @@ export const api = {
       attachment_url: data.attachment_url || "",
       coupon_code: data.coupon_code || "",
       discount_amount: data.discount_amount || 0,
-      created_at: new Date().toISOString(),
+      created_at: now.toISOString(),
+      expected_delivery_date: expectedDeliveryDateISO,
       user_id: data.user_id || getCurrentUserId() || null,
       razorpay_order_id: rzOrderId,
       amount: amountPaise,
@@ -1360,6 +1393,8 @@ export const api = {
       const q = query(collection(db, "reviews"), where("product_id", "==", productId));
       const snap = await getDocs(q);
       const reviews = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Review));
+      // Sort newest first
+      reviews.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       const count = reviews.length;
       const avgRating = count > 0 ? Math.round((reviews.reduce((s, r) => s + r.rating, 0) / count) * 10) / 10 : 0;
       const avgQuality =
@@ -1375,17 +1410,26 @@ export const api = {
     product_id: string;
     rating: number;
     quality_rating: number;
+    title?: string;
     comment?: string;
   }): Promise<Review> => {
     const user = JSON.parse(typeof window !== "undefined" ? localStorage.getItem("inkstone_user") || "{}" : "{}");
+    const uid = getCurrentUserId() || user?.id || user?.user_id || auth.currentUser?.uid || "";
+    const email = getCurrentUserEmail() || user?.email || auth.currentUser?.email || "";
+    const userName = user?.name || user?.displayName || auth.currentUser?.displayName || "Verified Customer";
+
     const review: Review = {
       id: `rev_${Date.now()}`,
-      user_name: user?.name || "Customer",
+      user_id: uid,
+      user_email: email,
+      user_name: userName,
       product_id: data.product_id,
       order_id: data.order_id,
-      rating: data.rating,
-      quality_rating: data.quality_rating,
-      comment: data.comment || "",
+      rating: Math.max(1, Math.min(5, Number(data.rating) || 5)),
+      quality_rating: Math.max(1, Math.min(5, Number(data.quality_rating) || 5)),
+      title: data.title ? data.title.trim() : "",
+      comment: data.comment ? data.comment.trim() : "",
+      verified_purchase: true,
       created_at: new Date().toISOString(),
     };
     try {
@@ -1395,6 +1439,105 @@ export const api = {
       console.warn("Firestore createReview fallback:", err);
     }
     return review;
+  },
+
+  canUserReviewProduct: async (
+    productId: string
+  ): Promise<ReviewEligibility> => {
+    if (!isLoggedIn()) {
+      return {
+        canReview: false,
+        reason: "not_logged_in",
+        message: "Sign in to leave a review. Verified customer reviews can only be submitted after product delivery.",
+      };
+    }
+
+    const uid = getCurrentUserId();
+    const email = getCurrentUserEmail();
+
+    try {
+      // 1. Fetch user orders
+      let userOrders = await api.getMyOrders();
+
+      // If userOrders is empty, also check fallback stored demo orders
+      if (userOrders.length === 0 && typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("crystal_demo_orders");
+          if (stored) {
+            userOrders = JSON.parse(stored);
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Check if user has orders containing this product
+      const matchingOrders = userOrders.filter((order) =>
+        (order.items || []).some((item: any) =>
+          item.product_id === productId ||
+          item.id === productId ||
+          (item.name && item.name.toLowerCase().trim() === productId.toLowerCase().trim())
+        )
+      );
+
+      if (matchingOrders.length === 0) {
+        return {
+          canReview: false,
+          reason: "not_purchased",
+          message: "Verified buyer exclusive: You can only review products you have purchased and received.",
+        };
+      }
+
+      // Check if any matching order has status 'Delivered'
+      const deliveredOrder = matchingOrders.find(
+        (order) => (order.status || "").toLowerCase().trim() === "delivered"
+      );
+
+      if (!deliveredOrder) {
+        const currentStatus = matchingOrders[0]?.status || "Processing";
+        return {
+          canReview: false,
+          reason: "not_delivered",
+          message: `Your order is currently "${currentStatus}". You can write a review once your product has been delivered.`,
+          order: matchingOrders[0],
+        };
+      }
+
+      // 2. Check if already reviewed in Firestore
+      const reviewSnap = await getDocs(
+        query(collection(db, "reviews"), where("product_id", "==", productId))
+      );
+      const existing = reviewSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Review))
+        .find(
+          (r) =>
+            (uid && r.user_id === uid) ||
+            (email && r.user_email && r.user_email.toLowerCase() === email.toLowerCase()) ||
+            r.order_id === deliveredOrder.order_id ||
+            r.order_id === deliveredOrder.id
+        );
+
+      if (existing) {
+        return {
+          canReview: false,
+          reason: "already_reviewed",
+          message: "You have already reviewed this product. Thank you for your feedback!",
+          order: deliveredOrder,
+          existingReview: existing,
+        };
+      }
+
+      return {
+        canReview: true,
+        message: "You are verified to review this delivered product.",
+        order: deliveredOrder,
+      };
+    } catch (err) {
+      console.warn("canUserReviewProduct error:", err);
+      return {
+        canReview: false,
+        reason: "not_purchased",
+        message: "Could not verify purchase status.",
+      };
+    }
   },
 
   getPendingReviews: async (): Promise<PendingReviewItem[]> => {
@@ -1415,5 +1558,189 @@ export const api = {
       }
     }
     return pending;
+  },
+
+  // ── Scratch Cards ───────────────────────────────────────────────────────────
+  getMyScratchCards: async (): Promise<ScratchCard[]> => {
+    const uid = getCurrentUserId();
+    const email = getCurrentUserEmail()?.toLowerCase();
+    try {
+      const snap = await getDocs(collection(db, "scratch_cards"));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as ScratchCard))
+        .filter((c) => (uid && c.user_id === uid) || (email && c.user_email?.toLowerCase() === email));
+    } catch (err) {
+      console.warn("Firestore getMyScratchCards warning:", err);
+      return [];
+    }
+  },
+
+  getAllScratchCards: async (): Promise<ScratchCard[]> => {
+    try {
+      const snap = await getDocs(collection(db, "scratch_cards"));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ScratchCard));
+    } catch {
+      return [];
+    }
+  },
+
+  claimScratchCard: async (cardId: string): Promise<{ coupon_code: string; discount_percent: number }> => {
+    const docRef = doc(db, "scratch_cards", cardId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) {
+      throw new Error("Scratch card not found.");
+    }
+    const cardData = snap.data() as ScratchCard;
+    const now = new Date().toISOString();
+
+    await updateDoc(docRef, {
+      is_scratched: true,
+      scratched_at: now,
+    });
+
+    // Ensure coupon is in active coupons collection
+    try {
+      const q = query(collection(db, "coupons"), where("code", "==", cardData.coupon_code));
+      const cSnap = await getDocs(q);
+      if (cSnap.empty) {
+        await addDoc(collection(db, "coupons"), {
+          code: cardData.coupon_code,
+          discount_percent: cardData.discount_percent,
+          min_purchase: cardData.min_purchase || 0,
+          is_active: true,
+          user_email: cardData.user_email || null,
+          is_scratch_card: true,
+          event_name: cardData.event_name,
+          created_at: now,
+        });
+      }
+    } catch { /* ignore */ }
+
+    return {
+      coupon_code: cardData.coupon_code,
+      discount_percent: cardData.discount_percent,
+    };
+  },
+
+  adminAwardScratchCard: async (data: {
+    user_id: string;
+    user_email?: string;
+    user_name?: string;
+    discount_percent: number;
+    event_name: string;
+  }): Promise<ScratchCard> => {
+    const promoCode = `${(data.event_name || "GIFT").replace(/[^a-zA-Z0-9]/g, "").substring(0, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const now = new Date().toISOString();
+
+    const card: ScratchCard = {
+      id: `sc_${Date.now()}`,
+      user_id: data.user_id,
+      user_email: (data.user_email || "").toLowerCase(),
+      user_name: data.user_name || "Customer",
+      coupon_code: promoCode,
+      discount_percent: Number(data.discount_percent) || 20,
+      min_purchase: 0,
+      event_name: data.event_name || "Festival Promotional Reward",
+      is_scratched: false,
+      created_at: now,
+    };
+
+    const ref = await addDoc(collection(db, "scratch_cards"), card);
+    card.id = ref.id;
+
+    // Register coupon code in coupons collection
+    await addDoc(collection(db, "coupons"), {
+      code: promoCode,
+      discount_percent: card.discount_percent,
+      min_purchase: 0,
+      is_active: true,
+      user_email: card.user_email,
+      is_scratch_card: true,
+      event_name: card.event_name,
+      created_at: now,
+    });
+
+    return card;
+  },
+
+  adminAwardScratchCardToAll: async (data: {
+    discount_percent: number;
+    event_name: string;
+  }): Promise<number> => {
+    const users = await api.getUsers();
+    let count = 0;
+    for (const u of users) {
+      if (u.user_id) {
+        await api.adminAwardScratchCard({
+          user_id: u.user_id,
+          user_email: u.email,
+          user_name: u.name,
+          discount_percent: data.discount_percent,
+          event_name: data.event_name,
+        });
+        count++;
+      }
+    }
+    return count;
+  },
+
+  sendPromotionalEmail: async (data: {
+    to: string;
+    customer_name?: string;
+    subject: string;
+    title: string;
+    message: string;
+    coupon_code?: string;
+    discount_percent?: number;
+    banner_url?: string;
+    cta_url?: string;
+  }) => {
+    const res = await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "promotional", data }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to send promotional email.");
+    }
+    return await res.json();
+  },
+
+  sendBatchPromotionalEmail: async (data: {
+    recipients: Array<{ email: string; name?: string }>;
+    subject: string;
+    title: string;
+    message: string;
+    coupon_code?: string;
+    discount_percent?: number;
+    banner_url?: string;
+    cta_url?: string;
+  }) => {
+    const res = await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "batch_promotional", data }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to send batch promotional email.");
+    }
+    return await res.json();
+  },
+
+  getSentEmails: async (): Promise<any[]> => {
+    try {
+      const q = query(collection(db, "sent_emails"), orderBy("createdAtTimestamp", "desc"), limit(50));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      }
+      const fallbackSnap = await getDocs(collection(db, "sent_emails"));
+      return fallbackSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (err) {
+      console.warn("Firestore getSentEmails fallback:", err);
+      return [];
+    }
   },
 };

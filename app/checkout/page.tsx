@@ -19,15 +19,24 @@ import {
   Product, 
   Address, 
   api, 
-  getProductPrice 
+  getProductPrice,
+  ScratchCard
 } from "@/src/lib/inkstone-api";
+import { TbSparkles } from "react-icons/tb";
 import { IoBagCheckOutline } from "react-icons/io5";
 
 
 const shippingCost = 99;
 
+export type CheckoutItem = {
+  product: Product;
+  quantity: number;
+  attachment_url?: string;
+};
+
 export default function CheckoutPage() {
   const router = useRouter();
+  const [checkoutItems, setCheckoutItems] = useState<CheckoutItem[]>([]);
   const [product, setProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [attachmentUrl, setAttachmentUrl] = useState<string>("");
@@ -59,21 +68,61 @@ export default function CheckoutPage() {
     discount_percent: number;
     discount_amount: number;
   } | null>(null);
+  const [availableRewards, setAvailableRewards] = useState<ScratchCard[]>([]);
   const [couponError, setCouponError] = useState("");
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    // 1. Load checkout product
-    const storedProduct = sessionStorage.getItem("crystal_checkout_product");
-    if (storedProduct) {
+    // 1. Load checkout items (from cart or multi-item checkout)
+    const storedItems =
+      sessionStorage.getItem("crystal_checkout_items") ||
+      sessionStorage.getItem("crystal_cart_items");
+    let loadedItems: CheckoutItem[] = [];
+
+    if (storedItems) {
       try {
-        setProduct(JSON.parse(storedProduct) as Product);
+        const parsed = JSON.parse(storedItems);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loadedItems = parsed.map((item: any) => ({
+            product: item.product || item,
+            quantity: item.quantity || 1,
+            attachment_url: item.attachment_url || "",
+          }));
+        }
       } catch {
-        sessionStorage.removeItem("crystal_checkout_product");
+        sessionStorage.removeItem("crystal_checkout_items");
       }
     }
 
-    // 2. Load attachment if uploaded for custom product
+    // 2. Fallback to single product if no items array
+    if (loadedItems.length === 0) {
+      const storedProduct = sessionStorage.getItem("crystal_checkout_product");
+      if (storedProduct) {
+        try {
+          const prod = JSON.parse(storedProduct) as Product;
+          const storedQty = Number(sessionStorage.getItem("crystal_checkout_quantity")) || 1;
+          const storedAttachment = sessionStorage.getItem("crystal_checkout_attachment") || "";
+          loadedItems = [{
+            product: prod,
+            quantity: storedQty,
+            attachment_url: storedAttachment,
+          }];
+        } catch {
+          sessionStorage.removeItem("crystal_checkout_product");
+        }
+      }
+    }
+
+    if (loadedItems.length > 0) {
+      setCheckoutItems(loadedItems);
+      setProduct(loadedItems[0].product);
+      setQuantity(loadedItems[0].quantity);
+      if (loadedItems[0].attachment_url) {
+        setAttachmentUrl(loadedItems[0].attachment_url);
+      }
+    }
+
+    // Load attachment if uploaded for custom product
     const storedAttachment = sessionStorage.getItem("crystal_checkout_attachment");
     if (storedAttachment) {
       setAttachmentUrl(storedAttachment);
@@ -87,47 +136,53 @@ export default function CheckoutPage() {
       router.replace("/login?redirect=/checkout");
       return;
     }
-      const userStr = localStorage.getItem("inkstone_user");
-      if (userStr) {
-        try {
-          const u = JSON.parse(userStr);
-          setAddressForm((prev) => ({
-            ...prev,
-            name: u.name || prev.name,
-            email: u.email || prev.email,
-          }));
-        } catch { /* ignore */ }
-      }
 
-      api.getAddresses()
-        .then((items) => {
-          setAddresses(items);
-          const defaultAddr = items.find((a) => a.is_default) || items[0];
-          if (defaultAddr) {
-            setSelectedAddressId(defaultAddr.id);
-            setAddressForm({
-              name: defaultAddr.name,
-              email: localStorage.getItem("inkstone_user") ? JSON.parse(localStorage.getItem("inkstone_user")!).email : "",
-              phone: defaultAddr.phone,
-              address_line1: defaultAddr.address_line1,
-              address_line2: defaultAddr.address_line2 || "",
-              city: defaultAddr.city,
-              state: defaultAddr.state || "",
-              postal_code: defaultAddr.postal_code,
-              country: defaultAddr.country,
-            });
-          }
-        })
-        .catch(() => {});
+    const userStr = localStorage.getItem("inkstone_user");
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        setAddressForm((prev) => ({
+          ...prev,
+          name: u.name || prev.name,
+          email: u.email || prev.email,
+        }));
+      } catch { /* ignore */ }
+    }
 
-    // 4. Restore existing coupon if previously applied
+    api.getAddresses()
+      .then((items) => {
+        setAddresses(items);
+        const defaultAddr = items.find((a) => a.is_default) || items[0];
+        if (defaultAddr) {
+          setSelectedAddressId(defaultAddr.id);
+          setAddressForm({
+            name: defaultAddr.name,
+            email: localStorage.getItem("inkstone_user") ? JSON.parse(localStorage.getItem("inkstone_user")!).email : "",
+            phone: defaultAddr.phone,
+            address_line1: defaultAddr.address_line1,
+            address_line2: defaultAddr.address_line2 || "",
+            city: defaultAddr.city,
+            state: defaultAddr.state || "",
+            postal_code: defaultAddr.postal_code,
+            country: defaultAddr.country,
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 4. Load unlocked scratch card rewards
+    api.getMyScratchCards()
+      .then((cards) => setAvailableRewards(cards.filter((c) => c.is_scratched && c.coupon_code)))
+      .catch(() => {});
+
+    // 5. Restore existing coupon if previously applied
     const storedCoupon = sessionStorage.getItem("crystal_checkout_coupon");
     if (storedCoupon) {
       try {
         setAppliedCoupon(JSON.parse(storedCoupon));
       } catch { /* ignore */ }
     }
-  }, []);
+  }, [router]);
 
   function handleSelectSavedAddress(addr: Address) {
     setSelectedAddressId(addr.id);
@@ -156,12 +211,14 @@ export default function CheckoutPage() {
     }));
   }
 
-  // Calculate prices
-  const unitPrice = product ? getProductPrice(product) : 0;
-  const subtotal = unitPrice * quantity;
+  // Calculate prices across all checkout items
+  const subtotal = checkoutItems.length > 0
+    ? checkoutItems.reduce((sum, item) => sum + getProductPrice(item.product) * item.quantity, 0)
+    : product ? getProductPrice(product) * quantity : 0;
   const discountAmount = appliedCoupon ? appliedCoupon.discount_amount : 0;
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
   const total = discountedSubtotal + shippingCost;
+  const totalItemCount = checkoutItems.reduce((acc, i) => acc + i.quantity, 0) || quantity;
 
   async function handleApplyCoupon() {
     const code = couponCodeInput.trim().toUpperCase();
@@ -228,23 +285,28 @@ export default function CheckoutPage() {
         email: addressForm.email,
         phone: addressForm.phone,
         address: formattedAddress,
-        quantity: quantity,
+        quantity: totalItemCount,
+        total: total,
       };
 
       sessionStorage.setItem("crystal_checkout_delivery", JSON.stringify(deliveryData));
+      sessionStorage.setItem("crystal_checkout_items", JSON.stringify(checkoutItems));
+      if (checkoutItems[0]?.product) {
+        sessionStorage.setItem("crystal_checkout_product", JSON.stringify(checkoutItems[0].product));
+      }
       router.push("/payment");
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Unable to proceed to payment.");
     }
   }
 
-  if (!product) {
+  if (checkoutItems.length === 0 && !product) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5 py-20">
         <div className="w-full max-w-md border border-black/10 bg-white p-8 text-center shadow-sm">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">Checkout</p>
           <h1 className="mt-3 text-3xl font-black">No product selected</h1>
-          <p className="mt-3 text-sm text-neutral-500">Choose a product from our catalog before opening checkout.</p>
+          <p className="mt-3 text-sm text-neutral-500">Choose a product from our catalog or cart before opening checkout.</p>
           <Link href="/product" className="mt-7 inline-flex bg-[#ffea00] px-6 py-3 text-sm font-bold text-black transition hover:bg-black hover:text-white">
             Back to products
           </Link>
@@ -461,67 +523,144 @@ export default function CheckoutPage() {
             <div className="border border-black/10 bg-white p-6 shadow-sm rounded-3xl">
               <h2 className="mb-4 text-lg font-bold">Order Summary</h2>
 
-              {/* Product item */}
-              <div className="flex gap-4 border-b border-black/10 pb-5">
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[#f2f2f2]">
-                  {product.image_url ? (
-                    <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-2xl font-bold text-neutral-300">C</div>
-                  )}
+              {/* Product items (Multi-item from cart) */}
+              {checkoutItems.length > 1 ? (
+                <div className="max-h-[260px] overflow-y-auto divide-y divide-black/10 border-b border-black/10 pb-4 space-y-3 pr-1">
+                  {checkoutItems.map((item, idx) => {
+                    const itemUnitPrice = getProductPrice(item.product);
+                    return (
+                      <div key={item.product.id || idx} className="flex gap-3 pt-3 first:pt-0">
+                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#f2f2f2]">
+                          {item.product.image_url ? (
+                            <img src={item.product.image_url} alt={item.product.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-xl font-bold text-neutral-300">C</div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="truncate text-xs font-bold text-neutral-900">{item.product.name}</h3>
+                          <p className="text-[11px] text-neutral-500">Qty: {item.quantity} × Rs. {itemUnitPrice.toFixed(2)}</p>
+                          <p className="mt-0.5 text-xs font-semibold text-neutral-800">Rs. {(itemUnitPrice * item.quantity).toFixed(2)}</p>
+                          {item.attachment_url && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] text-purple-700">
+                              <FiImage /> Photo Attached
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <span className={`inline-block px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                    product.product_type === "ready_stock" ? "bg-emerald-100 text-emerald-800" : "bg-purple-100 text-purple-800"
-                  }`}>
-                    {product.product_type === "ready_stock" ? "Ready Stock" : "Custom Product"}
-                  </span>
-                  <h3 className="truncate text-sm font-bold mt-1">{product.name}</h3>
-                  <p className="text-xs text-neutral-500">{product.category?.name ?? "Ready Stock"}</p>
-                  <p className="mt-2 text-sm font-semibold">Rs. {unitPrice.toFixed(2)}</p>
-                </div>
-              </div>
+              ) : (
+                /* Single Product View */
+                product && (
+                  <>
+                    <div className="flex gap-4 border-b border-black/10 pb-5">
+                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[#f2f2f2]">
+                        {product.image_url ? (
+                          <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-2xl font-bold text-neutral-300">C</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className={`inline-block px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                          product.product_type === "ready_stock" ? "bg-emerald-100 text-emerald-800" : "bg-purple-100 text-purple-800"
+                        }`}>
+                          {product.product_type === "ready_stock" ? "Ready Stock" : "Custom Product"}
+                        </span>
+                        <h3 className="truncate text-sm font-bold mt-1">{product.name}</h3>
+                        <p className="text-xs text-neutral-500">{product.category?.name ?? "Ready Stock"}</p>
+                        <p className="mt-2 text-sm font-semibold">Rs. {getProductPrice(product).toFixed(2)}</p>
+                      </div>
+                    </div>
 
-              {/* Customer Attachment preview (if Custom product) */}
-              {attachmentUrl && (
-                <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-                  <div className="flex items-center justify-between text-xs font-semibold text-neutral-700 mb-2">
-                    <span className="flex items-center gap-1.5"><FiImage className="text-purple-600" /> Customer Photo Attached</span>
-                    <a href={attachmentUrl} target="_blank" rel="noreferrer" className="text-[11px] underline text-blue-600">View</a>
-                  </div>
-                  <img src={attachmentUrl} alt="Attached customization" className="h-20 w-full object-cover rounded-lg" />
-                </div>
+                    {/* Customer Attachment preview (if Custom product) */}
+                    {attachmentUrl && (
+                      <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                        <div className="flex items-center justify-between text-xs font-semibold text-neutral-700 mb-2">
+                          <span className="flex items-center gap-1.5"><FiImage className="text-purple-600" /> Customer Photo Attached</span>
+                          <a href={attachmentUrl} target="_blank" rel="noreferrer" className="text-[11px] underline text-blue-600">View</a>
+                        </div>
+                        <img src={attachmentUrl} alt="Attached customization" className="h-20 w-full object-cover rounded-lg" />
+                      </div>
+                    )}
+
+                    {/* Quantity selector */}
+                    <div className="mt-5 flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-neutral-600">Quantity</span>
+                      <div className="flex items-center border border-black/10 rounded">
+                        <button
+                          type="button"
+                          className="p-2 hover:bg-[#ffea00]"
+                          aria-label="Decrease quantity"
+                          onClick={() => {
+                            const newQ = Math.max(1, quantity - 1);
+                            setQuantity(newQ);
+                            setCheckoutItems(prev => prev.map(i => ({ ...i, quantity: newQ })));
+                          }}
+                        >
+                          <FiMinus className="text-xs" />
+                        </button>
+                        <span className="min-w-8 text-center text-sm font-bold">{quantity}</span>
+                        <button
+                          type="button"
+                          className="p-2 hover:bg-[#ffea00]"
+                          aria-label="Increase quantity"
+                          onClick={() => {
+                            const newQ = Math.min(product.stock || 99, quantity + 1);
+                            setQuantity(newQ);
+                            setCheckoutItems(prev => prev.map(i => ({ ...i, quantity: newQ })));
+                          }}
+                        >
+                          <FiPlus className="text-xs" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )
               )}
-
-              {/* Quantity selector */}
-              <div className="mt-5 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-600">Quantity</span>
-                <div className="flex items-center border border-black/10 rounded">
-                  <button
-                    type="button"
-                    className="p-2 hover:bg-[#ffea00]"
-                    aria-label="Decrease quantity"
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  >
-                    <FiMinus className="text-xs" />
-                  </button>
-                  <span className="min-w-8 text-center text-sm font-bold">{quantity}</span>
-                  <button
-                    type="button"
-                    className="p-2 hover:bg-[#ffea00]"
-                    aria-label="Increase quantity"
-                    onClick={() => setQuantity(Math.min(product.stock || 99, quantity + 1))}
-                  >
-                    <FiPlus className="text-xs" />
-                  </button>
-                </div>
-              </div>
 
               {/* ── Coupon Code Box ── */}
               <div className="mt-6 border-t border-black/10 pt-5">
                 <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-neutral-700">
                   Have a Coupon?
                 </label>
+
+                {/* Available Scratch Card Rewards */}
+                {availableRewards.length > 0 && !appliedCoupon && (
+                  <div className="mb-3 rounded-2xl bg-gradient-to-r from-amber-50 to-yellow-50 p-3 border border-amber-200">
+                    <p className="text-[11px] font-bold text-amber-900 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                      <TbSparkles className="text-amber-600" /> Your Scratch Card Rewards
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {availableRewards.map((rew) => (
+                        <button
+                          key={rew.id}
+                          type="button"
+                          onClick={() => {
+                            setCouponCodeInput(rew.coupon_code);
+                            api.validateCoupon(rew.coupon_code, subtotal)
+                              .then((res) => {
+                                setAppliedCoupon({
+                                  code: res.code,
+                                  discount_percent: res.discount_percent,
+                                  discount_amount: res.discount_amount,
+                                });
+                                sessionStorage.setItem("crystal_checkout_coupon", JSON.stringify(res));
+                              })
+                              .catch((err) => setCouponError(err instanceof Error ? err.message : "Invalid coupon."));
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1 text-xs font-bold text-neutral-900 border border-amber-300 shadow-2xs hover:bg-[#ffea00] hover:text-black transition cursor-pointer"
+                        >
+                          <span className="font-mono">{rew.coupon_code}</span>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-full">{rew.discount_percent}% OFF</span>
+                          <span className="text-[10px] text-neutral-500 underline ml-0.5">Apply</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {appliedCoupon ? (
                   <div className="flex items-center justify-between rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs">
                     <div className="flex items-center gap-2">

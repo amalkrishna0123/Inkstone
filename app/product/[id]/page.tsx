@@ -3,11 +3,11 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, Product, ProductDetail, Review, addToLocalCart, toggleLocalWishlist, getLocalWishlist } from "@/src/lib/inkstone-api";
+import { api, Product, ProductDetail, Review, ReviewEligibility, addToLocalCart, toggleLocalWishlist, getLocalWishlist } from "@/src/lib/inkstone-api";
 import { TbCurrencyRupee, TbTruckDelivery, TbShieldCheck, TbRefresh, TbCheck } from "react-icons/tb";
 import { FaArrowRight, FaStar, FaRegStar, FaStarHalfAlt, FaHeart, FaRegHeart } from "react-icons/fa";
 import { HiMiniShoppingBag } from "react-icons/hi2";
-import { MdChevronLeft, MdChevronRight } from "react-icons/md";
+import { MdChevronLeft, MdChevronRight, MdClose } from "react-icons/md";
 import { IoLeaf } from "react-icons/io5";
 import { BsDropletFill } from "react-icons/bs";
 
@@ -138,6 +138,98 @@ export default function ProductDetailPage() {
   const [addedToast, setAddedToast] = useState(false);
   const [reviewsData, setReviewsData] = useState<{ reviews: Review[]; total: number; average_rating: number; average_quality_rating: number } | null>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
+
+  // ── Review eligibility & submission state ──────────────────────────────────
+  const [reviewEligibility, setReviewEligibility] = useState<ReviewEligibility | null>(null);
+  const [checkingEligibility, setCheckingEligibility] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewHoverRating, setReviewHoverRating] = useState(0);
+  const [reviewQualityRating, setReviewQualityRating] = useState(5);
+  const [reviewHoverQuality, setReviewHoverQuality] = useState(0);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+
+  // Check review eligibility
+  const checkReviewEligibility = async () => {
+    if (!productId) return;
+    setCheckingEligibility(true);
+    try {
+      const res = await api.canUserReviewProduct(productId);
+      setReviewEligibility(res);
+    } catch {
+      setReviewEligibility({
+        canReview: false,
+        reason: "not_purchased",
+        message: "Reviews are reserved for verified customers who received delivery of this product.",
+      });
+    } finally {
+      setCheckingEligibility(false);
+    }
+  };
+
+  useEffect(() => {
+    checkReviewEligibility();
+  }, [productId]);
+
+  async function handleSubmitReview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reviewEligibility?.canReview || !reviewEligibility.order) {
+      setReviewError("Only customers with delivered orders can submit a review.");
+      return;
+    }
+    if (!reviewComment.trim()) {
+      setReviewError("Please provide your review comments.");
+      return;
+    }
+
+    setSubmittingReview(true);
+    setReviewError("");
+
+    try {
+      const orderId = reviewEligibility.order.order_id || reviewEligibility.order.id;
+      const newRev = await api.createReview({
+        order_id: orderId,
+        product_id: productId,
+        rating: reviewRating,
+        quality_rating: reviewQualityRating,
+        title: reviewTitle.trim(),
+        comment: reviewComment.trim(),
+      });
+
+      // Update local reviews state immediately
+      setReviewsData((prev) => {
+        const existing = prev ? prev.reviews : [];
+        const updated = [newRev, ...existing];
+        const count = updated.length;
+        const avg = Math.round((updated.reduce((s, r) => s + r.rating, 0) / count) * 10) / 10;
+        const qual = Math.round((updated.reduce((s, r) => s + r.quality_rating, 0) / count) * 10) / 10;
+        return { reviews: updated, total: count, average_rating: avg, average_quality_rating: qual };
+      });
+
+      setReviewEligibility({
+        canReview: false,
+        reason: "already_reviewed",
+        message: "You have reviewed this crystal. Thank you for your feedback!",
+        existingReview: newRev,
+      });
+
+      setReviewSuccess(true);
+      setTimeout(() => {
+        setReviewSuccess(false);
+        setIsReviewModalOpen(false);
+        setReviewTitle("");
+        setReviewComment("");
+      }, 1500);
+    } catch (err: any) {
+      setReviewError(err?.message || "Failed to submit review. Please try again.");
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
 
   // ── Load product & wishlist & reviews state ─────────────────────────────────────────
   useEffect(() => {
@@ -276,14 +368,19 @@ export default function ProductDetailPage() {
     );
   }
 
-  const avgRating = 4.87;
-  const ratingBreakdown = [
-    { stars: 5, pct: 78 },
-    { stars: 4, pct: 14 },
-    { stars: 3, pct: 5 },
-    { stars: 2, pct: 2 },
-    { stars: 1, pct: 1 },
-  ];
+  const hasDynamicReviews = Boolean(reviewsData && reviewsData.reviews.length > 0);
+  const totalReviewsCount = hasDynamicReviews ? reviewsData!.total : MOCK_REVIEWS.length;
+  const currentAvgRating = hasDynamicReviews ? reviewsData!.average_rating : 4.87;
+
+  const dynamicRatingBreakdown = [5, 4, 3, 2, 1].map((stars) => {
+    if (hasDynamicReviews && reviewsData!.reviews.length > 0) {
+      const matchCount = reviewsData!.reviews.filter((r) => Math.round(r.rating) === stars).length;
+      const pct = Math.round((matchCount / reviewsData!.reviews.length) * 100);
+      return { stars, pct };
+    }
+    const fallbackMap: Record<number, number> = { 5: 78, 4: 14, 3: 5, 2: 2, 1: 1 };
+    return { stars, pct: fallbackMap[stars] || 0 };
+  });
 
   return (
     <div className="bg-white">
@@ -388,9 +485,9 @@ export default function ProductDetailPage() {
 
               {/* Rating row */}
               <div className="flex items-center gap-3">
-                <StarRating rating={avgRating} size="text-base" />
-                <span className="text-sm font-semibold text-neutral-700">{avgRating} out of 5</span>
-                <span className="text-sm text-neutral-400">({MOCK_REVIEWS.length} reviews)</span>
+                <StarRating rating={currentAvgRating} size="text-base" />
+                <span className="text-sm font-semibold text-neutral-700">{currentAvgRating.toFixed(1)} out of 5</span>
+                <span className="text-sm text-neutral-400">({totalReviewsCount} {totalReviewsCount === 1 ? "review" : "reviews"})</span>
               </div>
 
               {/* Price */}
@@ -634,25 +731,41 @@ export default function ProductDetailPage() {
       ═══════════════════════════════════════════════════════════════════════ */}
       <section className="bg-[#f9f8f5] py-20">
         <div className="mx-auto max-w-[1300px] px-5">
-          <h2 className="mb-10 text-4xl font-bold tracking-[-2px] text-neutral-900">Customer Reviews</h2>
+          <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#4a5c3a]">Verified Community</span>
+              <h2 className="mt-1 text-4xl font-bold tracking-[-2px] text-neutral-900">Customer Reviews</h2>
+            </div>
+            {reviewEligibility?.canReview && (
+              <button
+                type="button"
+                id="header-write-review-btn"
+                onClick={() => setIsReviewModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-[#ffea00] hover:text-black shadow-xs"
+              >
+                <FaStar className="text-amber-400" />
+                <span>Write a Review</span>
+              </button>
+            )}
+          </div>
 
-          <div className="grid gap-10 lg:grid-cols-[280px_1fr]">
+          <div className="grid gap-10 lg:grid-cols-[290px_1fr]">
 
             {/* ── Summary Column ──────────────────────────────────────────── */}
             <div className="flex flex-col gap-6">
               <div>
                 <span className="text-7xl font-extrabold tracking-tighter text-neutral-900">
-                  {reviewsData && reviewsData.total > 0 ? reviewsData.average_rating.toFixed(1) : avgRating}
+                  {currentAvgRating.toFixed(1)}
                 </span>
                 <span className="ml-1 text-lg text-neutral-400">/ 5</span>
                 <div className="mt-2">
-                  <StarRating rating={reviewsData && reviewsData.total > 0 ? reviewsData.average_rating : avgRating} size="text-xl" />
+                  <StarRating rating={currentAvgRating} size="text-xl" />
                 </div>
                 <p className="mt-1 text-sm text-neutral-400">
-                  Based on {reviewsData && reviewsData.total > 0 ? reviewsData.total : MOCK_REVIEWS.length} reviews
+                  Based on {totalReviewsCount} {totalReviewsCount === 1 ? "review" : "reviews"}
                 </p>
                 {reviewsData && reviewsData.average_quality_rating > 0 && (
-                  <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
                     Quality Rating: {reviewsData.average_quality_rating.toFixed(1)} / 5.0
                   </p>
                 )}
@@ -660,7 +773,7 @@ export default function ProductDetailPage() {
 
               {/* Rating bars */}
               <div className="flex flex-col gap-2">
-                {ratingBreakdown.map((row) => (
+                {dynamicRatingBreakdown.map((row) => (
                   <div key={row.stars} className="flex items-center gap-3 text-xs">
                     <span className="w-4 font-semibold text-neutral-600">{row.stars}</span>
                     <FaStar className="text-amber-400 flex-shrink-0" />
@@ -675,43 +788,114 @@ export default function ProductDetailPage() {
                 ))}
               </div>
 
-              {/* Write review button - links to delivered orders in customer dashboard */}
-              <div>
-                <button
-                  type="button"
-                  id="write-review-btn"
-                  onClick={() => router.push("/dashboard/orders")}
-                  className="mt-2 w-full rounded-full bg-neutral-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-[#ffea00] hover:text-black"
-                >
-                  Write a Review
-                </button>
-                <p className="mt-2 text-center text-[11px] text-neutral-500">
-                  Reviews are available after an order is successfully delivered.
-                </p>
+              {/* Contextual Eligibility & Write Review Action */}
+              <div className="rounded-2xl border border-neutral-200/80 bg-white p-4.5 shadow-xs">
+                {checkingEligibility ? (
+                  <div className="py-2 text-center text-xs text-neutral-400 animate-pulse">
+                    Verifying purchase eligibility...
+                  </div>
+                ) : reviewEligibility?.canReview ? (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                      <TbShieldCheck className="text-base text-emerald-600 shrink-0" />
+                      <span>Verified Delivery</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-neutral-500">
+                      Your order #{reviewEligibility.order?.order_id || reviewEligibility.order?.id} has been delivered. Share your thoughts with the community!
+                    </p>
+                    <button
+                      type="button"
+                      id="write-review-btn"
+                      onClick={() => setIsReviewModalOpen(true)}
+                      className="w-full rounded-full bg-neutral-900 py-3 text-xs font-bold text-white transition hover:bg-[#ffea00] hover:text-black cursor-pointer shadow-xs"
+                    >
+                      Write a Review
+                    </button>
+                  </div>
+                ) : reviewEligibility?.reason === "not_logged_in" ? (
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold text-neutral-800">Have you received this item?</span>
+                    <p className="text-[11px] leading-relaxed text-neutral-500">
+                      Reviews can only be submitted by verified customers after delivery. Sign in to review your purchases.
+                    </p>
+                    <Link
+                      href={`/login?redirect=${encodeURIComponent(`/product/${productId}`)}`}
+                      className="inline-flex w-full items-center justify-center rounded-full bg-neutral-900 py-2.5 text-xs font-bold text-white transition hover:bg-[#ffea00] hover:text-black"
+                    >
+                      Sign In to Review
+                    </Link>
+                  </div>
+                ) : reviewEligibility?.reason === "not_delivered" ? (
+                  <div className="rounded-xl bg-blue-50/80 p-3.5 border border-blue-100">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+                      <TbTruckDelivery className="text-base text-blue-600 shrink-0" />
+                      <span>Delivery In Progress</span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-blue-800">
+                      {reviewEligibility.message || "Your order is in transit. You will be able to submit a verified review once delivery is completed."}
+                    </p>
+                    <Link
+                      href="/dashboard/orders"
+                      className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-bold text-blue-900 underline hover:text-blue-700"
+                    >
+                      Track Your Order →
+                    </Link>
+                  </div>
+                ) : reviewEligibility?.reason === "already_reviewed" ? (
+                  <div className="rounded-xl bg-emerald-50/80 p-3.5 border border-emerald-100">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                      <TbShieldCheck className="text-base text-emerald-600 shrink-0" />
+                      <span>Review Submitted</span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-emerald-800">
+                      Thank you! You have already submitted a verified customer review for this delivered crystal.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-neutral-50 p-3 border border-neutral-200/70">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-700">
+                      <TbShieldCheck className="text-base text-neutral-400 shrink-0" />
+                      <span>Verified Customers Only</span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">
+                      Only customers who have purchased and received delivery of this product are eligible to write a review.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* ── Review Cards ─────────────────────────────────────────────── */}
             <div className="flex flex-col gap-5">
-              {reviewsData && reviewsData.reviews.length > 0 ? (
-                reviewsData.reviews.map((review) => (
-                  <div key={review.id} className="group flex gap-4 rounded-3xl bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md border border-neutral-100">
+              {hasDynamicReviews ? (
+                reviewsData!.reviews.map((review) => (
+                  <div key={review.id} className="group flex gap-4 rounded-3xl bg-white p-6 shadow-xs transition-all duration-200 hover:shadow-md border border-neutral-100">
                     <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#f0f4ec] text-sm font-bold text-[#4a5c3a]">
                       {(review.user_name || "C").slice(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-neutral-900">{review.user_name}</span>
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600">Verified Buyer</span>
+                        <span className="font-semibold text-neutral-900">{review.user_name || "Verified Customer"}</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 border border-emerald-200">
+                          <TbShieldCheck className="text-xs" /> Verified Buyer
+                        </span>
+                        {review.order_id && (
+                          <span className="text-[10px] text-neutral-400 font-mono">
+                            Order #{review.order_id}
+                          </span>
+                        )}
                         <span className="ml-auto text-xs text-neutral-400">
-                          {review.created_at ? new Date(review.created_at).toLocaleDateString() : "Recent"}
+                          {review.created_at ? new Date(review.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent"}
                         </span>
                       </div>
-                      <div className="mt-1 flex items-center gap-3">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-3">
                         <StarRating rating={review.rating} size="text-xs" />
                         <span className="text-xs font-semibold text-neutral-600">Quality: {review.quality_rating}/5</span>
                       </div>
-                      <p className="mt-3 text-sm leading-relaxed text-neutral-600">{review.comment || "Great product, matched description perfectly."}</p>
+                      {review.title && (
+                        <h4 className="mt-2.5 font-bold text-neutral-900 text-sm">{review.title}</h4>
+                      )}
+                      <p className="mt-1 text-sm leading-relaxed text-neutral-600">{review.comment || "Great product, matched description perfectly."}</p>
                     </div>
                   </div>
                 ))
@@ -760,6 +944,167 @@ export default function ProductDetailPage() {
           </div>
         </div>
       </section>
+
+      {/* ─── Verified Review Submission Modal ─── */}
+      {isReviewModalOpen && reviewEligibility?.order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-neutral-100 sm:p-8">
+            <button
+              type="button"
+              onClick={() => {
+                if (!submittingReview) setIsReviewModalOpen(false);
+              }}
+              className="absolute right-5 top-5 flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 hover:bg-neutral-200 transition"
+            >
+              <MdClose className="text-lg" />
+            </button>
+
+            {reviewSuccess ? (
+              <div className="py-8 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-2xl font-bold">
+                  ✓
+                </div>
+                <h3 className="mt-4 text-2xl font-bold text-neutral-900">Review Submitted!</h3>
+                <p className="mt-2 text-sm text-neutral-500">
+                  Thank you for your feedback! Your verified review is now live.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitReview} className="space-y-4">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 mb-2 border border-emerald-200">
+                    <TbShieldCheck /> Verified Delivered Order #{reviewEligibility.order.order_id || reviewEligibility.order.id}
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900">
+                    Review {product.name}
+                  </h3>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Share your experience with other customers. Only customers who received delivery can write a review.
+                  </p>
+                </div>
+
+                {reviewError && (
+                  <div className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-600 border border-red-200">
+                    {reviewError}
+                  </div>
+                )}
+
+                {/* Overall Star Rating */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
+                    Overall Rating (Stars)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-2xl">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onMouseEnter={() => setReviewHoverRating(star)}
+                          onMouseLeave={() => setReviewHoverRating(0)}
+                          onClick={() => setReviewRating(star)}
+                          className="transition hover:scale-110 cursor-pointer"
+                        >
+                          <FaStar
+                            className={
+                              (reviewHoverRating || reviewRating) >= star
+                                ? "text-amber-400"
+                                : "text-neutral-200"
+                            }
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs font-bold text-neutral-700">
+                      {["", "Poor", "Fair", "Average", "Good", "Outstanding"][reviewHoverRating || reviewRating]}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quality Rating */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
+                    Craftsmanship & Quality
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-xl">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onMouseEnter={() => setReviewHoverQuality(star)}
+                          onMouseLeave={() => setReviewHoverQuality(0)}
+                          onClick={() => setReviewQualityRating(star)}
+                          className="transition hover:scale-110 cursor-pointer"
+                        >
+                          <FaStar
+                            className={
+                              (reviewHoverQuality || reviewQualityRating) >= star
+                                ? "text-emerald-500"
+                                : "text-neutral-200"
+                            }
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs font-semibold text-neutral-600">
+                      {reviewHoverQuality || reviewQualityRating} / 5 Rating
+                    </span>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                    Review Headline
+                  </label>
+                  <input
+                    type="text"
+                    value={reviewTitle}
+                    onChange={(e) => setReviewTitle(e.target.value)}
+                    placeholder="e.g., Exquisite clarity and radiant energy"
+                    maxLength={100}
+                    className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm text-neutral-800 placeholder-neutral-400 outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition"
+                  />
+                </div>
+
+                {/* Comment */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                    Your Feedback <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    required
+                    rows={4}
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Describe how the crystal looks in person, the cut and polish, the packaging, and how satisfied you are..."
+                    className="w-full rounded-xl border border-neutral-200 p-3 text-sm text-neutral-800 placeholder-neutral-400 outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsReviewModalOpen(false)}
+                    disabled={submittingReview}
+                    className="rounded-full border border-neutral-200 px-5 py-2.5 text-xs font-bold text-neutral-600 hover:bg-neutral-100 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingReview}
+                    className="flex items-center gap-2 rounded-full bg-[#ffea00] px-6 py-2.5 text-xs font-bold text-black hover:bg-neutral-900 hover:text-[#ffea00] transition disabled:opacity-50"
+                  >
+                    {submittingReview ? "Submitting..." : "Submit Review"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════
           §6  "BE PART OF WHAT'S NEXT" — CTA Banner

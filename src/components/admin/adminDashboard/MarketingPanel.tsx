@@ -13,10 +13,8 @@ import {
   FiClock,
   FiAlertCircle,
   FiRefreshCw,
-  FiExternalLink,
   FiGift,
   FiChevronRight,
-  FiSparkles,
 } from "react-icons/fi";
 import { AdminUser, api, Banner, Coupon, Order } from "@/src/lib/inkstone-api";
 

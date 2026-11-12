@@ -1093,7 +1093,7 @@ function OrdersTablePanel({ items, refresh }: { items: Order[]; refresh: () => P
   );
 }
 
-function CouponsTablePanel({ items, refresh }: { items: Coupon[]; refresh: () => Promise<void> }) {
+function CouponsTablePanel({ items, refresh, customers = [] }: { items: Coupon[]; refresh: () => Promise<void>; customers?: CustomerEntry[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");

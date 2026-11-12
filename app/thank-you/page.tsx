@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FiCheck, FiShoppingBag, FiArrowRight } from "react-icons/fi";
 import { TbTruckDelivery, TbMail, TbSparkles } from "react-icons/tb";
@@ -9,6 +9,14 @@ import { api, ScratchCard } from "@/src/lib/inkstone-api";
 import ScratchCardComponent from "@/src/components/rewards/ScratchCardComponent";
 
 export default function ThankYouPage() {
+  return (
+    <Suspense>
+      <ThankYouContent />
+    </Suspense>
+  );
+}
+
+function ThankYouContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [orderNumber, setOrderNumber] = useState("");

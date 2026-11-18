@@ -1,4 +1,6 @@
 import { GiCrystalBall } from "react-icons/gi";
+import detailCrystal from "../../../../public/about/Inkstone_detailed_crystal.png"
+import Image from "next/image";
 
 const TrustedPartners = () => {
     return(
@@ -37,7 +39,9 @@ const TrustedPartners = () => {
 
                         {/* Right column */}
                         <div className="w-full bg-[#e3e3e2] rounded-3xl flex flex-col sm:flex-row gap-4 sm:gap-6 pr-2 sm:pr-4 lg:pr-4 min-h-[440px] lg:h-[520px]">
-                            <div className="w-full sm:w-1/2 h-56 sm:h-full rounded-2xl sm:rounded-3xl bg-amber-200 shrink-0"></div>
+                            <div className="w-full sm:w-1/2 h-56 sm:h-full rounded-2xl sm:rounded-3xl overflow-hidden bg-amber-200 shrink-0">
+                                <Image src={detailCrystal} alt="" className="w-full h-full object-cover"/>
+                            </div>
                             <div className="w-full sm:w-1/2 flex flex-col justify-between py-2 sm:py-4 px-1 sm:px-2">
                                 <div>
                                     <h3 className="text-2xl sm:text-3xl font-normal tracking-tight text-gray-900">The Art of Every Detail</h3>

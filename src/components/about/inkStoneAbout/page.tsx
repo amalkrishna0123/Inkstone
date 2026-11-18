@@ -1,5 +1,7 @@
 import { MdOutlineViewInAr } from "react-icons/md";
-
+import Image from "next/image";
+import crystal1 from "../../../../public/about/Engraved Crystal Heart Portrait.png"
+import crystal2 from "../../../../public/about/Valentine's Day Gifts for Her.jpeg"
 const InkStoneAbout = () => {
     return(
         <div className="w-full">
@@ -39,7 +41,7 @@ const InkStoneAbout = () => {
                                 </div>
                                 <div className="h-48 sm:h-56 md:h-full min-h-[180px] w-full overflow-hidden rounded-2xl md:rounded-3xl bg-neutral-300 flex items-center justify-center">
                                     <div className="w-full h-full bg-gradient-to-tr from-neutral-400/40 to-neutral-200/60" >
-                                        <img src="" alt="" className="w-full h-full object-cover"/>
+                                        <Image src={crystal1} alt="" className="w-full h-full object-cover"/>
                                     </div>
                                 </div>
                             </div>
@@ -83,7 +85,9 @@ const InkStoneAbout = () => {
                                     </div>
                                 </div>
                                 <div className="h-48 sm:h-56 md:h-full min-h-[180px] w-full overflow-hidden rounded-2xl md:rounded-3xl bg-neutral-300 flex items-center justify-center">
-                                    <div className="w-full h-full bg-gradient-to-tr from-neutral-400/40 to-neutral-200/60" />
+                                    <div className="w-full h-full bg-gradient-to-tr from-neutral-400/40 to-neutral-200/60">
+                                        <Image src={crystal2} alt="" className="w-full h-full object-cover"/>
+                                    </div>
                                 </div>
                             </div>
                         </div>

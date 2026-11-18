@@ -172,7 +172,7 @@ export default function CheckoutPage() {
 
     // 4. Load unlocked scratch card rewards
     api.getMyScratchCards()
-      .then((cards) => setAvailableRewards(cards.filter((c) => c.is_scratched && c.coupon_code)))
+      .then((cards) => setAvailableRewards(cards.filter((c) => c.is_scratched && c.coupon_code && !c.is_redeemed)))
       .catch(() => {});
 
     // 5. Restore existing coupon if previously applied

@@ -15,7 +15,7 @@ const HomeServices = () => {
                             <p className="text-black tracking-[-1px] text-[15px] md:text-base">Featured Services</p>
                         </div>
 
-                        <div className="text-[40px] leading-tight md:text-6xl pt-5 md:pt-0 tracking-[-3px] md:text-right">
+                        <div data-text-split className="text-[40px] leading-tight md:text-6xl pt-5 md:pt-0 tracking-[-3px] md:text-right">
                             Personalized crystal gifts <span className="block">for every occasion</span>
                         </div>
                     </div>

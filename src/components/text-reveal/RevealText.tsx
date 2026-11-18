@@ -24,6 +24,7 @@ export default function RevealText<TElement extends ElementType = "span">({
 
   return (
     <Component
+      data-text-split
       data-text-reveal
       data-text-reveal-mode={mode}
       data-text-reveal-kind={kind}

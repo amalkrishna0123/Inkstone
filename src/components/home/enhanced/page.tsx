@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+
+const CrystalScene = dynamic(() => import("./CrystalScene"), {
+  ssr: false,
+});
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -35,6 +40,7 @@ const enhancedImages = [
 ];
 
 const Enhanced = () => {
+  const crystalSectionRef = useRef<HTMLElement | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
   const imageRefs = useRef<HTMLDivElement[]>([]);
 
@@ -146,8 +152,13 @@ const Enhanced = () => {
 
   return (
     <div className="w-full overflow-x-hidden flex flex-col items-center justify-center">
-      <section className="w-full h-screen flex items-center justify-center text-center px-6">
-        <h2 className="text-[40px] leading-tight md:text-6xl tracking-[-3px]">
+      <section
+        ref={crystalSectionRef}
+        className="relative w-full h-screen flex items-center justify-center text-center px-6 overflow-hidden"
+      >
+        <CrystalScene containerRef={crystalSectionRef} />
+
+        <h2 className="relative z-10 pointer-events-none select-none text-[40px] leading-tight md:text-6xl tracking-[-3px]">
           Turn your memories into 
           <span className="text-[#ffea00] text-shadow-[#60606009] text-shadow-2xs">
             {" "}

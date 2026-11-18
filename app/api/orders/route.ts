@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/src/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+  doc,
+} from "firebase/firestore";
 
 const RAZORPAY_KEY_ID =
   process.env.RAZORPAY_KEY_ID ||
@@ -91,6 +100,48 @@ export async function POST(req: Request) {
         createdAtTimestamp: serverTimestamp(),
       });
       docId = docRef.id;
+
+      // Mark coupon as claimed and used by this customer
+      if (orderDoc.coupon_code) {
+        const cleanCode = orderDoc.coupon_code.trim().toUpperCase();
+        const customerEmail = (orderDoc.email || "").toLowerCase();
+        const userId = orderDoc.user_id || "";
+
+        try {
+          const qCoupon = query(collection(db, "coupons"), where("code", "==", cleanCode));
+          const couponSnap = await getDocs(qCoupon);
+          if (!couponSnap.empty) {
+            const couponDoc = couponSnap.docs[0];
+            const couponData = couponDoc.data();
+            const existingUsedBy = Array.isArray(couponData.used_by) ? couponData.used_by : [];
+            const updatedUsedBy = Array.from(new Set([...existingUsedBy, customerEmail, userId].filter(Boolean)));
+            const updatePayload: Record<string, any> = {
+              used_by: updatedUsedBy,
+              used_count: (couponData.used_count || 0) + 1,
+            };
+            if (couponData.is_scratch_card || couponData.user_email) {
+              updatePayload.is_used = true;
+              updatePayload.redeemed_at = new Date().toISOString();
+            }
+            await updateDoc(doc(db, "coupons", couponDoc.id), updatePayload);
+          }
+        } catch (cErr) {
+          console.warn("Could not mark coupon used in orders route:", cErr);
+        }
+
+        try {
+          const qScratch = query(collection(db, "scratch_cards"), where("coupon_code", "==", cleanCode));
+          const scratchSnap = await getDocs(qScratch);
+          if (!scratchSnap.empty) {
+            await updateDoc(doc(db, "scratch_cards", scratchSnap.docs[0].id), {
+              is_redeemed: true,
+              redeemed_at: new Date().toISOString(),
+            });
+          }
+        } catch (sErr) {
+          console.warn("Could not mark scratch card redeemed in orders route:", sErr);
+        }
+      }
     } catch (dbErr) {
       console.warn("Firestore save warning in route handler:", dbErr);
     }

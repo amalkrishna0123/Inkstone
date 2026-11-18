@@ -11,17 +11,15 @@ import {
 import { usePathname } from "next/navigation";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import SplitType from "split-type";
+import { SplitText } from "gsap/SplitText";
 
-gsap.registerPlugin(ScrollTrigger);
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger, SplitText);
+}
 
-type RevealMode = "words" | "chars";
-type RevealKind = "hero" | "heading" | "paragraph" | "button" | "nav" | "text";
-
-type RevealInstance = {
-  split: SplitType;
-  trigger?: ScrollTrigger;
-  animation: gsap.core.Tween;
+type SplitInstance = {
+  element: HTMLElement;
+  split: SplitText;
 };
 
 type TextRevealContextValue = {
@@ -30,102 +28,128 @@ type TextRevealContextValue = {
 
 const TextRevealContext = createContext<TextRevealContextValue | null>(null);
 
-const SKIP_SELECTOR =
-  "script,style,svg,path,video,img,picture,canvas,input,textarea,select,option,br,[aria-hidden='true'],[data-text-reveal-skip]";
+// Skip containers: Home hero has its dedicated masked text reveal; navigation, interactive controls, and media are skipped
+const SKIP_CONTAINER_SELECTOR = [
+  "#home-hero",
+  "[data-hero-section]",
+  "nav",
+  "header",
+  "footer",
+  "form",
+  "button",
+  "svg",
+  "canvas",
+  "video",
+  "iframe",
+  "code",
+  "pre",
+  "[aria-hidden='true']",
+  "[data-text-split-skip]",
+  "[data-text-reveal-skip]",
+  "[data-text-split='false']",
+].join(",");
 
-function prefersReducedMotion() {
+const DISALLOWED_CHILDREN_SELECTOR = [
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "ul",
+  "ol",
+  "table",
+  "form",
+  "video",
+  "canvas",
+  "svg",
+  "iframe",
+].join(",");
+
+// Target selectors: ALL text elements across all pages
+const CANDIDATE_SELECTOR = [
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "p",
+  "[data-text-split]",
+  "[data-text-reveal]",
+  ".split-text",
+  ".text-reveal",
+].join(",");
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function hasReadableTextNode(element: Element) {
-  return Array.from(element.childNodes).some(
-    (node) =>
-      node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+function isElementVisible(el: HTMLElement): boolean {
+  if (el.offsetParent === null && window.getComputedStyle(el).position !== "fixed") {
+    return false;
+  }
+  const style = window.getComputedStyle(el);
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.opacity !== "0"
   );
 }
 
-function getRevealKind(element: HTMLElement): RevealKind {
-  if (element.dataset.textRevealKind) {
-    return element.dataset.textRevealKind as RevealKind;
-  }
+function canSplitElement(element: HTMLElement): boolean {
+  if (element.hasAttribute("data-split-initialized")) return false;
+  if (element.closest(SKIP_CONTAINER_SELECTOR)) return false;
+  if (element.querySelector(DISALLOWED_CHILDREN_SELECTOR)) return false;
 
-  const owner = element.closest("h1,h2,h3,h4,h5,h6,p,a,button,header");
+  const text = element.textContent?.trim() || "";
+  if (text.length < 2) return false;
 
-  if (owner?.closest("header")) return "nav";
-  if (owner?.tagName === "H1") return "hero";
-  if (owner?.matches("h2,h3,h4,h5,h6")) return "heading";
-  if (owner?.tagName === "P") return "paragraph";
-  if (owner?.tagName === "BUTTON" || owner?.tagName === "A") return "button";
+  if (!isElementVisible(element)) return false;
 
-  return "text";
+  return true;
 }
 
-function getRevealMode(element: HTMLElement, kind: RevealKind): RevealMode {
-  const configuredMode = element.dataset.textRevealMode;
+/**
+ * Creates a responsive masked text reveal animation on scroll using GSAP SplitText.
+ * Each line is wrapped in an overflow-hidden mask container; lines slide up smoothly
+ * from outside the mask into view on scroll.
+ */
+function createMaskedLineSplit(element: HTMLElement): SplitText | null {
+  element.setAttribute("data-split-initialized", "true");
 
-  if (configuredMode === "chars" || configuredMode === "words") {
-    return configuredMode;
-  }
+  try {
+    const isHeading = /H[1-6]/.test(element.tagName);
 
-  return kind === "hero" ? "chars" : "words";
-}
+    const split = SplitText.create(element, {
+      type: "lines",
+      linesClass: "split-line",
+      mask: "lines",
+      autoSplit: true,
+      onSplit: (self) => {
+        if (!self.lines || self.lines.length === 0) return;
 
-function getRevealTargets(split: SplitType, mode: RevealMode) {
-  return mode === "chars" ? split.chars ?? [] : split.words ?? [];
-}
+        return gsap.from(self.lines, {
+          yPercent: 120,
+          autoAlpha: 0,
+          duration: isHeading ? 1.05 : 0.85,
+          stagger: isHeading ? 0.08 : 0.05,
+          ease: "power4.out",
+          scrollTrigger: {
+            trigger: element,
+            start: "top 88%",
+            toggleActions: "play none none reverse",
+          },
+        });
+      },
+    });
 
-function animateElement(element: HTMLElement, index: number) {
-  const kind = getRevealKind(element);
-  const mode = getRevealMode(element, kind);
-  const split = new SplitType(element, {
-    types: mode === "chars" ? "words,chars" : "words",
-    tagName: "span",
-    wordClass: "text-reveal-word",
-    charClass: "text-reveal-char",
-    splitClass: "text-reveal-split",
-  });
-  const targets = getRevealTargets(split, mode);
-
-  if (targets.length === 0) {
-    split.revert();
+    return split;
+  } catch {
+    element.removeAttribute("data-split-initialized");
     return null;
   }
-
-  gsap.set(targets, {
-    autoAlpha: 0,
-    yPercent: kind === "button" ? 55 : 100,
-    filter: "blur(8px)",
-    force3D: true,
-    willChange: "transform, opacity, filter",
-  });
-
-  const tweenVars: gsap.TweenVars = {
-    autoAlpha: 1,
-    yPercent: 0,
-    filter: "blur(0px)",
-    duration: kind === "paragraph" ? 0.82 : 0.9,
-    ease: kind === "paragraph" ? "power4.out" : "expo.out",
-    stagger: mode === "chars" ? 0.018 : kind === "paragraph" ? 0.026 : 0.04,
-    delay: kind === "button" ? 0.12 : kind === "nav" ? index * 0.035 : 0,
-    clearProps: "willChange",
-    paused: kind !== "nav",
-  };
-
-  if (kind === "nav") {
-    const animation = gsap.to(targets, tweenVars);
-    return { split, animation };
-  }
-
-  const animation = gsap.to(targets, tweenVars);
-  const trigger = ScrollTrigger.create({
-    trigger: element,
-    start: "top 80%",
-    end: "bottom 20%",
-    once: true,
-    animation,
-  });
-
-  return { split, trigger, animation };
 }
 
 export default function TextRevealProvider({
@@ -134,9 +158,7 @@ export default function TextRevealProvider({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const instancesRef = useRef<RevealInstance[]>([]);
-  const contextRef = useRef<gsap.Context | null>(null);
-  const hasAnimatedNavRef = useRef(false);
+  const instancesRef = useRef<SplitInstance[]>([]);
   const frameRef = useRef<number | null>(null);
 
   const cleanup = useCallback(() => {
@@ -145,65 +167,113 @@ export default function TextRevealProvider({
       frameRef.current = null;
     }
 
-    contextRef.current?.revert();
-    contextRef.current = null;
-
-    instancesRef.current.forEach(({ animation, trigger, split }) => {
-      trigger?.kill();
-      animation.kill();
-      split.revert();
+    instancesRef.current.forEach(({ split, element }) => {
+      try {
+        element.removeAttribute("data-split-initialized");
+        split.revert();
+        split.kill();
+      } catch {}
     });
     instancesRef.current = [];
   }, []);
 
   const refresh = useCallback(() => {
-    cleanup();
+    if (typeof window === "undefined") return;
 
     if (prefersReducedMotion()) {
       ScrollTrigger.refresh();
       return;
     }
 
+    if (pathname?.startsWith("/admin")) {
+      return;
+    }
+
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+    }
+
     frameRef.current = window.requestAnimationFrame(() => {
       frameRef.current = null;
+
+      // Filter out instances whose elements were removed from the DOM
+      instancesRef.current = instancesRef.current.filter(({ element, split }) => {
+        if (!document.body.contains(element)) {
+          try {
+            split.revert();
+            split.kill();
+          } catch {}
+          return false;
+        }
+        return true;
+      });
+
       const root = document.body;
 
-      contextRef.current = gsap.context(() => {
-        const candidates = Array.from(
-          root.querySelectorAll<HTMLElement>("[data-text-reveal]"),
-        ).filter((element) => {
-          if (!element.textContent?.trim()) return false;
-          if (element.closest(SKIP_SELECTOR)) return false;
-          if (!hasReadableTextNode(element)) return false;
-          if (element.closest("header") && hasAnimatedNavRef.current) {
-            return false;
-          }
+      // Find all eligible text elements (headings, paragraphs, etc.)
+      const candidates = Array.from(
+        root.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR),
+      ).filter(canSplitElement);
 
-          return true;
-        });
-
-        instancesRef.current = candidates
-          .map((element, index) => animateElement(element, index))
-          .filter((instance): instance is RevealInstance => Boolean(instance));
-
-        if (!hasAnimatedNavRef.current) {
-          hasAnimatedNavRef.current = true;
+      candidates.forEach((element) => {
+        const split = createMaskedLineSplit(element);
+        if (split) {
+          instancesRef.current.push({ element, split });
         }
+      });
 
-        ScrollTrigger.refresh();
-      }, root);
+      ScrollTrigger.refresh();
     });
-  }, [cleanup]);
+  }, [pathname]);
 
+  // Route change lifecycle
   useEffect(() => {
+    cleanup();
     refresh();
 
-    return cleanup;
-  }, [cleanup, pathname, refresh]);
+    // After route transition completes (~650ms), re-scan and refresh ScrollTriggers
+    const timer = window.setTimeout(() => {
+      refresh();
+      ScrollTrigger.refresh();
+    }, 700);
 
+    return () => {
+      window.clearTimeout(timer);
+      cleanup();
+    };
+  }, [pathname, cleanup, refresh]);
+
+  // Handle custom fonts loading
   useEffect(() => {
-    return cleanup;
-  }, [cleanup]);
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      document.fonts.ready.then(() => {
+        ScrollTrigger.refresh();
+      });
+    }
+  }, []);
+
+  // Observe DOM changes to handle dynamically loaded content (e.g., catalog products in /product)
+  useEffect(() => {
+    if (typeof window === "undefined" || pathname?.startsWith("/admin")) return;
+
+    let debounceTimer: number | null = null;
+    const observer = new MutationObserver(() => {
+      if (debounceTimer !== null) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        refresh();
+      }, 250);
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => {
+      if (debounceTimer !== null) window.clearTimeout(debounceTimer);
+      observer.disconnect();
+    };
+  }, [pathname, refresh]);
 
   return (
     <TextRevealContext.Provider value={{ refresh }}>

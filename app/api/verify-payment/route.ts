@@ -87,6 +87,44 @@ export async function POST(req: Request) {
           }
         }
 
+        // 1.5. Mark coupon used by customer in verify-payment
+        if (orderData.coupon_code) {
+          try {
+            const cleanCode = orderData.coupon_code.trim().toUpperCase();
+            const customerEmail = (orderData.email || "").toLowerCase();
+            const userId = orderData.user_id || "";
+
+            const qCoupon = query(collection(db, "coupons"), where("code", "==", cleanCode));
+            const couponSnap = await getDocs(qCoupon);
+            if (!couponSnap.empty) {
+              const couponDoc = couponSnap.docs[0];
+              const couponData = couponDoc.data();
+              const existingUsedBy = Array.isArray(couponData.used_by) ? couponData.used_by : [];
+              const updatedUsedBy = Array.from(new Set([...existingUsedBy, customerEmail, userId].filter(Boolean)));
+              const updatePayload: Record<string, any> = {
+                used_by: updatedUsedBy,
+                used_count: (couponData.used_count || 0) + 1,
+              };
+              if (couponData.is_scratch_card || couponData.user_email) {
+                updatePayload.is_used = true;
+                updatePayload.redeemed_at = new Date().toISOString();
+              }
+              await updateDoc(doc(db, "coupons", couponDoc.id), updatePayload);
+            }
+
+            const qScratch = query(collection(db, "scratch_cards"), where("coupon_code", "==", cleanCode));
+            const scratchSnap = await getDocs(qScratch);
+            if (!scratchSnap.empty) {
+              await updateDoc(doc(db, "scratch_cards", scratchSnap.docs[0].id), {
+                is_redeemed: true,
+                redeemed_at: new Date().toISOString(),
+              });
+            }
+          } catch (cErr) {
+            console.warn("Coupon mark used warning in verify-payment:", cErr);
+          }
+        }
+
         // 2. Scratch Card Check: First Successful Order Reward
         try {
           const userEmail = (orderData.email || "").toLowerCase();

@@ -16,7 +16,7 @@ import {
 } from "react-icons/lu";
 import { TbCurrencyRupee, TbShieldCheck } from "react-icons/tb";
 import { FaStar, FaRegStar } from "react-icons/fa";
-import { api, addToLocalCart, Product } from "@/src/lib/inkstone-api";
+import { api, addToLocalCart, Product, Review } from "@/src/lib/inkstone-api";
 
 // Initial Demo Orders Data as fallback
 const INITIAL_ORDERS = [
@@ -146,6 +146,7 @@ export default function OrdersPage() {
     item: FormattedOrderItem;
   } | null>(null);
   const [reviewedKeys, setReviewedKeys] = useState<string[]>([]);
+  const [userReviews, setUserReviews] = useState<Review[]>([]);
   const [modalRating, setModalRating] = useState(5);
   const [modalHoverRating, setModalHoverRating] = useState(0);
   const [modalQualityRating, setModalQualityRating] = useState(5);
@@ -156,9 +157,47 @@ export default function OrdersPage() {
   const [modalError, setModalError] = useState("");
   const [modalSuccess, setModalSuccess] = useState(false);
 
+  // Helper to determine if a specific product/item in an order has already been reviewed
+  const isItemReviewed = (orderId: string, itemId: string) => {
+    const key = `${orderId}_${itemId}`;
+    if (reviewedKeys.includes(key) || reviewedKeys.includes(itemId)) {
+      return true;
+    }
+    return userReviews.some(
+      (r) =>
+        (r.order_id === orderId && (r.product_id === itemId || !r.product_id)) ||
+        r.product_id === itemId
+    );
+  };
+
+  // Helper to determine if an entire order (all items) has been reviewed
+  const isOrderFullyReviewed = (order: FormattedOrder) => {
+    if (!order.items || order.items.length === 0) {
+      return reviewedKeys.includes(order.id);
+    }
+    return order.items.every((it) => isItemReviewed(order.id, it.id));
+  };
+
   function handleOpenReview(order: FormattedOrder, targetItem?: FormattedOrderItem) {
-    const item = targetItem || order.items[0];
+    const isDelivered = (order.status || "").toLowerCase().trim() === "delivered";
+    if (!isDelivered) {
+      showToast("Reviews can only be submitted once the product has been delivered.");
+      return;
+    }
+
+    let item = targetItem;
+    if (!item) {
+      // Automatically choose the first item that hasn't been reviewed yet
+      item = order.items.find((it) => !isItemReviewed(order.id, it.id)) || order.items[0];
+    }
+
     if (!item) return;
+
+    if (isItemReviewed(order.id, item.id)) {
+      showToast(`You have already reviewed "${item.name}".`);
+      return;
+    }
+
     setReviewModalData({ order, item });
     setModalRating(5);
     setModalHoverRating(0);
@@ -173,6 +212,18 @@ export default function OrdersPage() {
   async function handleModalSubmitReview(e: React.FormEvent) {
     e.preventDefault();
     if (!reviewModalData) return;
+
+    const isDelivered = (reviewModalData.order.status || "").toLowerCase().trim() === "delivered";
+    if (!isDelivered) {
+      setModalError("Products can only be reviewed after delivery.");
+      return;
+    }
+
+    if (isItemReviewed(reviewModalData.order.id, reviewModalData.item.id)) {
+      setModalError("You have already reviewed this product.");
+      return;
+    }
+
     if (!modalComment.trim()) {
       setModalError("Please write a few words about your experience with this crystal.");
       return;
@@ -182,7 +233,7 @@ export default function OrdersPage() {
     setModalError("");
 
     try {
-      await api.createReview({
+      const created = await api.createReview({
         order_id: reviewModalData.order.id,
         product_id: reviewModalData.item.id,
         rating: modalRating,
@@ -192,7 +243,17 @@ export default function OrdersPage() {
       });
 
       const key = `${reviewModalData.order.id}_${reviewModalData.item.id}`;
-      setReviewedKeys((prev) => [...prev, key]);
+      setReviewedKeys((prev) => {
+        const next = Array.from(new Set([...prev, key, reviewModalData.item.id, reviewModalData.order.id]));
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("crystal_reviewed_keys", JSON.stringify(next));
+          } catch {}
+        }
+        return next;
+      });
+      setUserReviews((prev) => [created, ...prev]);
+
       setModalSuccess(true);
       setToastMessage(`Your verified review for "${reviewModalData.item.name}" has been published!`);
 
@@ -204,15 +265,41 @@ export default function OrdersPage() {
       setTimeout(() => {
         setToastMessage("");
       }, 4000);
-    } catch (err: any) {
-      setModalError(err?.message || "Failed to submit review. Please try again.");
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : "Failed to submit review. Please try again.");
     } finally {
       setModalSubmitting(false);
     }
   }
 
   useEffect(() => {
-    async function loadUserOrders() {
+    async function loadData() {
+      // 1. Load user reviews to identify already reviewed products/orders
+      try {
+        let storedKeys: string[] = [];
+        if (typeof window !== "undefined") {
+          try {
+            storedKeys = JSON.parse(localStorage.getItem("crystal_reviewed_keys") || "[]");
+          } catch {}
+        }
+
+        const myReviews = await api.getMyReviews();
+        setUserReviews(myReviews || []);
+
+        const keysFromReviews = (myReviews || []).map((r) => `${r.order_id}_${r.product_id}`);
+        const productIdsFromReviews = (myReviews || []).map((r) => r.product_id);
+        const orderIdsFromReviews = (myReviews || []).map((r) => r.order_id);
+
+        setReviewedKeys(
+          Array.from(
+            new Set([...keysFromReviews, ...productIdsFromReviews, ...orderIdsFromReviews, ...storedKeys])
+          )
+        );
+      } catch (err) {
+        console.warn("loadUserReviews error:", err);
+      }
+
+      // 2. Load user orders
       try {
         const myOrders = await api.getMyOrders();
         if (myOrders && myOrders.length > 0) {
@@ -277,7 +364,7 @@ export default function OrdersPage() {
       }
     }
 
-    loadUserOrders();
+    loadData();
   }, []);
 
   const filteredOrders = orders.filter((order) => {
@@ -510,15 +597,21 @@ export default function OrdersPage() {
                             <p className="text-[11px] text-neutral-500">Qty: {item.quantity}</p>
                             {isDelivered && (
                               <div className="mt-1 flex items-center gap-2">
-                                {reviewedKeys.includes(`${order.id}_${item.id}`) ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                    <LuCircleCheck className="text-xs" /> Reviewed
-                                  </span>
+                                {isItemReviewed(order.id, item.id) ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    aria-disabled="true"
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 cursor-not-allowed select-none opacity-90"
+                                    title="You have already submitted a review for this product"
+                                  >
+                                    <LuCircleCheck className="text-xs text-emerald-600" /> Reviewed
+                                  </button>
                                 ) : (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenReview(order, item)}
-                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-[#4a5c3a] hover:text-black underline cursor-pointer"
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-[#4a5c3a] hover:text-black underline cursor-pointer transition"
                                   >
                                     <FaStar className="text-amber-400 text-[10px]" /> Review Item
                                   </button>
@@ -553,14 +646,27 @@ export default function OrdersPage() {
 
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                       {isDelivered && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenReview(order)}
-                          className="flex items-center justify-center gap-1 rounded-xl bg-neutral-900 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#ffea00] hover:text-black shadow-xs cursor-pointer"
-                        >
-                          <FaStar className="text-amber-400 text-xs shrink-0" />
-                          <span>Review Product</span>
-                        </button>
+                        isOrderFullyReviewed(order) ? (
+                          <button
+                            type="button"
+                            disabled
+                            aria-disabled="true"
+                            className="flex items-center justify-center gap-1.5 rounded-xl bg-neutral-100 border border-neutral-200/90 px-3 py-1.5 text-xs font-bold text-neutral-400 cursor-not-allowed select-none shadow-none"
+                            title="You have already reviewed all items in this order"
+                          >
+                            <LuCircleCheck className="text-emerald-600 text-xs shrink-0" />
+                            <span>Review Product</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenReview(order)}
+                            className="flex items-center justify-center gap-1.5 rounded-xl bg-neutral-900 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#ffea00] hover:text-black shadow-xs cursor-pointer"
+                          >
+                            <FaStar className="text-amber-400 text-xs shrink-0" />
+                            <span>Review Product</span>
+                          </button>
+                        )
                       )}
 
                       <button
@@ -789,12 +895,22 @@ export default function OrdersPage() {
                       }}
                       className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-800 outline-none focus:border-neutral-900"
                     >
-                      {reviewModalData.order.items.map((it) => (
-                        <option key={it.id} value={it.id}>
-                          {it.name}
-                        </option>
-                      ))}
+                      {reviewModalData.order.items.map((it) => {
+                        const alreadyReviewed = isItemReviewed(reviewModalData.order.id, it.id);
+                        return (
+                          <option key={it.id} value={it.id} disabled={alreadyReviewed}>
+                            {it.name} {alreadyReviewed ? "✓ (Already Reviewed)" : ""}
+                          </option>
+                        );
+                      })}
                     </select>
+                  </div>
+                )}
+
+                {isItemReviewed(reviewModalData.order.id, reviewModalData.item.id) && (
+                  <div className="rounded-xl bg-amber-50 p-2.5 text-xs font-semibold text-amber-800 border border-amber-200 flex items-center gap-1.5">
+                    <LuCircleCheck className="text-emerald-600 text-sm shrink-0" />
+                    <span>You have already submitted a review for this product.</span>
                   </div>
                 )}
 
@@ -908,10 +1024,10 @@ export default function OrdersPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={modalSubmitting}
-                    className="flex items-center gap-1.5 rounded-xl bg-neutral-900 px-5 py-2 text-xs font-bold text-white hover:bg-[#ffea00] hover:text-black transition disabled:opacity-50"
+                    disabled={modalSubmitting || isItemReviewed(reviewModalData.order.id, reviewModalData.item.id)}
+                    className="flex items-center gap-1.5 rounded-xl bg-neutral-900 px-5 py-2 text-xs font-bold text-white hover:bg-[#ffea00] hover:text-black transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {modalSubmitting ? "Submitting..." : "Submit Review"}
+                    {modalSubmitting ? "Submitting..." : isItemReviewed(reviewModalData.order.id, reviewModalData.item.id) ? "Already Reviewed" : "Submit Review"}
                   </button>
                 </div>
               </form>

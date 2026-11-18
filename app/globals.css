@@ -28,6 +28,31 @@ body {
   font-family: var(--font-geist-sans), sans-serif;
 }
 
+[data-text-split] {
+  display: inline-block;
+}
+
+.split-line-mask {
+  overflow: hidden !important;
+  display: block;
+  padding-bottom: 0.08em;
+  margin-bottom: -0.08em;
+}
+
+.split-line {
+  display: block;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+}
+
+.hero-reveal-line {
+  display: inline-flex;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+}
+
 .text-reveal-split,
 .text-reveal-word,
 .text-reveal-char {

@@ -85,6 +85,10 @@ export type Coupon = {
   valid_from?: string | null;
   valid_to?: string | null;
   created_at?: string;
+  used_by?: string[];
+  is_used?: boolean;
+  user_email?: string;
+  used_count?: number;
 };
 
 export type Address = {
@@ -135,6 +139,23 @@ export type PendingReviewItem = {
 
 export type OrderItem = { product_id: string; name: string; price: number; quantity: number };
 
+export type GalleryVideo = {
+  id: string;
+  title: string;
+  description: string;
+  video_url: string;
+  thumbnail_url: string;
+  cloudinary_public_id: string;
+  thumbnail_cloudinary_id?: string;
+  duration_label?: string;
+  duration_seconds?: number;
+  category?: string;
+  order?: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+};
+
 export type Order = {
   id: string;
   order_id: string;
@@ -167,6 +188,8 @@ export type ScratchCard = {
   event_name: string;
   is_scratched: boolean;
   scratched_at?: string;
+  is_redeemed?: boolean;
+  redeemed_at?: string;
   created_at: string;
 };
 
@@ -1151,8 +1174,14 @@ export const api = {
     try {
       const ref = await addDoc(collection(db, "orders"), orderObj);
       orderObj.id = ref.id;
+      if (orderObj.coupon_code) {
+        void api.markCouponUsed(orderObj.coupon_code, orderObj.email, orderObj.user_id);
+      }
     } catch {
       orderObj.id = orderId;
+      if (orderObj.coupon_code) {
+        void api.markCouponUsed(orderObj.coupon_code, orderObj.email, orderObj.user_id);
+      }
     }
 
     return orderObj;
@@ -1285,7 +1314,8 @@ export const api = {
 
   validateCoupon: async (
     code: string,
-    subtotal: number
+    subtotal: number,
+    customerEmail?: string
   ): Promise<{ valid: boolean; code: string; discount_percent: number; discount_amount: number; min_purchase: number }> => {
     const cleanCode = code.trim().toUpperCase();
     const coupons = await api.getCoupons();
@@ -1293,6 +1323,82 @@ export const api = {
 
     if (!coupon) {
       throw new Error("Invalid or inactive coupon code.");
+    }
+
+    const emailToCheck = (customerEmail || getCurrentUserEmail() || "").trim().toLowerCase();
+    const uid = getCurrentUserId() || "";
+
+    // 1. Check if single-use or already marked as used
+    if ((coupon as any).is_used) {
+      throw new Error("This coupon code has already been claimed and used.");
+    }
+
+    // 2. Check if this customer has already claimed/used this coupon
+    const usedBy = (coupon as any).used_by;
+    if (Array.isArray(usedBy)) {
+      if (emailToCheck && usedBy.some((e: string) => e.toLowerCase() === emailToCheck)) {
+        throw new Error("You have already claimed this coupon code.");
+      }
+      if (uid && usedBy.includes(uid)) {
+        throw new Error("You have already claimed this coupon code.");
+      }
+    }
+
+    // 3. If coupon is exclusive to another email
+    const couponUserEmail = ((coupon as any).user_email || "").trim().toLowerCase();
+    if (couponUserEmail && emailToCheck && couponUserEmail !== emailToCheck) {
+      throw new Error("This coupon code was issued for another account.");
+    }
+
+    // 4. Check scratch card records if applicable
+    try {
+      const qScratch = query(collection(db, "scratch_cards"), where("coupon_code", "==", cleanCode));
+      const scratchSnap = await getDocs(qScratch);
+      if (!scratchSnap.empty) {
+        const card = scratchSnap.docs[0].data();
+        if (card.is_redeemed) {
+          throw new Error("This coupon code has already been claimed.");
+        }
+        if (emailToCheck && card.user_email && card.user_email.toLowerCase() !== emailToCheck) {
+          throw new Error("This reward coupon belongs to another customer account.");
+        }
+      }
+    } catch (err: any) {
+      if (err.message && (err.message.includes("already") || err.message.includes("exclusive") || err.message.includes("belongs"))) {
+        throw err;
+      }
+    }
+
+    // 5. Check order history: did this customer already place an order with this coupon code?
+    if (emailToCheck || uid) {
+      try {
+        const ordersRef = collection(db, "orders");
+        let matchingOrdersSnap;
+        if (emailToCheck) {
+          matchingOrdersSnap = await getDocs(
+            query(ordersRef, where("email", "==", emailToCheck), where("coupon_code", "==", cleanCode))
+          );
+        }
+        if ((!matchingOrdersSnap || matchingOrdersSnap.empty) && uid) {
+          matchingOrdersSnap = await getDocs(
+            query(ordersRef, where("user_id", "==", uid), where("coupon_code", "==", cleanCode))
+          );
+        }
+
+        if (matchingOrdersSnap && !matchingOrdersSnap.empty) {
+          const nonCancelled = matchingOrdersSnap.docs.filter((d) => {
+            const st = (d.data().status || "").toLowerCase();
+            return st !== "cancelled";
+          });
+          if (nonCancelled.length > 0) {
+            throw new Error("You have already claimed this coupon code.");
+          }
+        }
+      } catch (err: any) {
+        if (err.message && err.message.includes("already claimed")) {
+          throw err;
+        }
+      }
     }
 
     const now = new Date();
@@ -1314,6 +1420,55 @@ export const api = {
       discount_amount: discountAmount,
       min_purchase: coupon.min_purchase,
     };
+  },
+
+  markCouponUsed: async (
+    code: string,
+    customerEmail?: string,
+    userId?: string
+  ): Promise<void> => {
+    if (!code) return;
+    const cleanCode = code.trim().toUpperCase();
+    const cleanEmail = (customerEmail || "").trim().toLowerCase();
+    const uid = userId || "";
+
+    try {
+      // 1. Update coupons collection
+      const qCoupon = query(collection(db, "coupons"), where("code", "==", cleanCode));
+      const couponSnap = await getDocs(qCoupon);
+      if (!couponSnap.empty) {
+        const couponDoc = couponSnap.docs[0];
+        const couponData = couponDoc.data();
+        const existingUsedBy = Array.isArray(couponData.used_by) ? couponData.used_by : [];
+        const updatedUsedBy = Array.from(new Set([...existingUsedBy, cleanEmail, uid].filter(Boolean)));
+
+        const updatePayload: Record<string, any> = {
+          used_by: updatedUsedBy,
+          used_count: (couponData.used_count || 0) + 1,
+        };
+        if (couponData.is_scratch_card || couponData.user_email) {
+          updatePayload.is_used = true;
+          updatePayload.redeemed_at = new Date().toISOString();
+        }
+        await updateDoc(doc(db, "coupons", couponDoc.id), updatePayload);
+      }
+    } catch (cErr) {
+      console.warn("markCouponUsed coupons warning:", cErr);
+    }
+
+    try {
+      // 2. Update scratch_cards collection
+      const qScratch = query(collection(db, "scratch_cards"), where("coupon_code", "==", cleanCode));
+      const scratchSnap = await getDocs(qScratch);
+      if (!scratchSnap.empty) {
+        await updateDoc(doc(db, "scratch_cards", scratchSnap.docs[0].id), {
+          is_redeemed: true,
+          redeemed_at: new Date().toISOString(),
+        });
+      }
+    } catch (sErr) {
+      console.warn("markCouponUsed scratch_cards warning:", sErr);
+    }
   },
 
   // ── Customer Addresses ───────────────────────────────────────────────────────
@@ -1438,7 +1593,56 @@ export const api = {
     } catch (err) {
       console.warn("Firestore createReview fallback:", err);
     }
+
+    if (typeof window !== "undefined") {
+      try {
+        const stored = JSON.parse(localStorage.getItem("crystal_user_reviews") || "[]");
+        stored.push(review);
+        localStorage.setItem("crystal_user_reviews", JSON.stringify(stored));
+
+        const keys = JSON.parse(localStorage.getItem("crystal_reviewed_keys") || "[]");
+        const nextKeys = Array.from(new Set([...keys, `${data.order_id}_${data.product_id}`, data.product_id]));
+        localStorage.setItem("crystal_reviewed_keys", JSON.stringify(nextKeys));
+      } catch {}
+    }
+
     return review;
+  },
+
+  getMyReviews: async (): Promise<Review[]> => {
+    const user = JSON.parse(typeof window !== "undefined" ? localStorage.getItem("inkstone_user") || "{}" : "{}");
+    const uid = getCurrentUserId() || user?.id || user?.user_id || auth.currentUser?.uid || "";
+    const email = (getCurrentUserEmail() || user?.email || auth.currentUser?.email || "").toLowerCase();
+
+    const list: Review[] = [];
+
+    if (typeof window !== "undefined") {
+      try {
+        const local = JSON.parse(localStorage.getItem("crystal_user_reviews") || "[]");
+        if (Array.isArray(local)) {
+          list.push(...local);
+        }
+      } catch {}
+    }
+
+    try {
+      const snap = await getDocs(collection(db, "reviews"));
+      const fromDb = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Review));
+      const userDbReviews = fromDb.filter((r) => {
+        const matchUid = Boolean(uid && r.user_id === uid);
+        const matchEmail = Boolean(email && r.user_email && r.user_email.toLowerCase() === email);
+        return matchUid || matchEmail;
+      });
+
+      userDbReviews.forEach((r) => {
+        const exists = list.some((x) => x.id === r.id || (x.order_id === r.order_id && x.product_id === r.product_id));
+        if (!exists) list.push(r);
+      });
+    } catch (err) {
+      console.warn("Firestore getMyReviews fallback:", err);
+    }
+
+    return list;
   },
 
   canUserReviewProduct: async (
@@ -1501,19 +1705,37 @@ export const api = {
         };
       }
 
-      // 2. Check if already reviewed in Firestore
-      const reviewSnap = await getDocs(
-        query(collection(db, "reviews"), where("product_id", "==", productId))
-      );
-      const existing = reviewSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as Review))
-        .find(
-          (r) =>
-            (uid && r.user_id === uid) ||
-            (email && r.user_email && r.user_email.toLowerCase() === email.toLowerCase()) ||
-            r.order_id === deliveredOrder.order_id ||
-            r.order_id === deliveredOrder.id
+      // 2. Check if already reviewed in Firestore or local cache
+      if (typeof window !== "undefined") {
+        try {
+          const keys: string[] = JSON.parse(localStorage.getItem("crystal_reviewed_keys") || "[]");
+          const targetOrderId = deliveredOrder.order_id || deliveredOrder.id;
+          if (keys.includes(productId) || keys.includes(`${targetOrderId}_${productId}`)) {
+            return {
+              canReview: false,
+              reason: "already_reviewed",
+              message: "You have already reviewed this product. Thank you for your feedback!",
+              order: deliveredOrder,
+            };
+          }
+        } catch {}
+      }
+
+      let existing: Review | undefined;
+      try {
+        const reviewSnap = await getDocs(
+          query(collection(db, "reviews"), where("product_id", "==", productId))
         );
+        existing = reviewSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Review))
+          .find(
+            (r) =>
+              (uid && r.user_id === uid) ||
+              (email && r.user_email && r.user_email.toLowerCase() === email.toLowerCase()) ||
+              r.order_id === deliveredOrder.order_id ||
+              r.order_id === deliveredOrder.id
+          );
+      } catch {}
 
       if (existing) {
         return {
@@ -1741,6 +1963,84 @@ export const api = {
     } catch (err) {
       console.warn("Firestore getSentEmails fallback:", err);
       return [];
+    }
+  },
+
+  // ── Gallery Videos ──────────────────────────────────────────────────────
+  getGalleryVideos: async (): Promise<GalleryVideo[]> => {
+    try {
+      const q = query(
+        collection(db, "gallery_videos"),
+        where("is_active", "==", true),
+        orderBy("order", "asc")
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as GalleryVideo));
+      }
+    } catch {
+      // fallback without ordering if index not ready
+    }
+    try {
+      const snap = await getDocs(collection(db, "gallery_videos"));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as GalleryVideo))
+        .filter((v) => v.is_active)
+        .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    } catch (err) {
+      console.warn("getGalleryVideos error:", err);
+      return [];
+    }
+  },
+
+  getAllGalleryVideos: async (): Promise<GalleryVideo[]> => {
+    try {
+      const snap = await getDocs(collection(db, "gallery_videos"));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as GalleryVideo))
+        .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    } catch (err) {
+      console.warn("getAllGalleryVideos error:", err);
+      return [];
+    }
+  },
+
+  createGalleryVideo: async (data: Omit<GalleryVideo, "id">): Promise<GalleryVideo> => {
+    // Strip undefined values — Firestore rejects them
+    const clean = Object.fromEntries(
+      Object.entries({ ...data, created_at: new Date().toISOString() }).filter(
+        ([, v]) => v !== undefined
+      )
+    );
+    const ref = await addDoc(collection(db, "gallery_videos"), clean);
+    return { id: ref.id, ...data };
+  },
+
+  updateGalleryVideo: async (id: string, data: Partial<GalleryVideo>): Promise<void> => {
+    // Strip undefined values — Firestore rejects them
+    const clean = Object.fromEntries(
+      Object.entries({ ...data, updated_at: new Date().toISOString() }).filter(
+        ([, v]) => v !== undefined
+      )
+    );
+    await updateDoc(doc(db, "gallery_videos", id), clean);
+  },
+
+  deleteGalleryVideo: async (id: string, cloudinaryPublicId: string, thumbnailCloudinaryId?: string): Promise<void> => {
+    // Delete from Firestore
+    await deleteDoc(doc(db, "gallery_videos", id));
+    // Delete from Cloudinary via server-side API route
+    await fetch("/api/cloudinary/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ public_id: cloudinaryPublicId, resource_type: "video" }),
+    });
+    if (thumbnailCloudinaryId) {
+      await fetch("/api/cloudinary/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ public_id: thumbnailCloudinaryId, resource_type: "image" }),
+      });
     }
   },
 };

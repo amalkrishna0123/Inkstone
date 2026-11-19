@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FiArrowLeft, FiUploadCloud, FiTrash2, FiImage } from "react-icons/fi";
+import { FiArrowLeft, FiUploadCloud, FiTrash2, FiImage, FiAlertCircle } from "react-icons/fi";
 import { api, Product } from "@/src/lib/inkstone-api";
 import { RiImageCircleAiFill } from "react-icons/ri";
 
@@ -17,6 +17,7 @@ export default function ProductAttachmentPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -30,7 +31,13 @@ export default function ProductAttachmentPage() {
     const storedProduct = sessionStorage.getItem("crystal_checkout_product");
     if (storedProduct) {
       try {
-        setProduct(JSON.parse(storedProduct) as Product);
+        const prod = JSON.parse(storedProduct) as Product;
+        setProduct(prod);
+        // If product is ready_stock, it doesn't need attachment, redirect to checkout
+        if (prod.product_type === "ready_stock") {
+          router.replace("/checkout");
+          return;
+        }
         setIsLoadingProduct(false);
         return;
       } catch {
@@ -43,6 +50,9 @@ export default function ProductAttachmentPage() {
         .then((data) => {
           setProduct(data);
           sessionStorage.setItem("crystal_checkout_product", JSON.stringify(data));
+          if (data.product_type === "ready_stock") {
+            router.replace("/checkout");
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -51,11 +61,16 @@ export default function ProductAttachmentPage() {
     } else {
       setIsLoadingProduct(false);
     }
-  }, [productId]);
+  }, [productId, router]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        setErrorMessage("File size exceeds 5MB limit. Please select a smaller image.");
+        return;
+      }
+      setErrorMessage(null);
       setFile(selectedFile);
       const url = URL.createObjectURL(selectedFile);
       setPreview(url);
@@ -77,19 +92,25 @@ export default function ProductAttachmentPage() {
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type.startsWith("image/")) {
-        setFile(droppedFile);
-        const url = URL.createObjectURL(droppedFile);
-        setPreview(url);
-      } else {
-        alert("Please drop an image file.");
+      if (!droppedFile.type.startsWith("image/")) {
+        setErrorMessage("Please drop an image file (PNG, JPG, WEBP).");
+        return;
       }
+      if (droppedFile.size > 5 * 1024 * 1024) {
+        setErrorMessage("File size exceeds 5MB limit. Please select a smaller image.");
+        return;
+      }
+      setErrorMessage(null);
+      setFile(droppedFile);
+      const url = URL.createObjectURL(droppedFile);
+      setPreview(url);
     }
   };
 
   const clearFile = () => {
     setFile(null);
     setPreview(null);
+    setErrorMessage(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -98,19 +119,34 @@ export default function ProductAttachmentPage() {
   const [isUploading, setIsUploading] = useState(false);
 
   const handleSubmit = async () => {
-    if (file) {
-      setIsUploading(true);
-      try {
-        const res = await api.uploadOrderAttachment(file);
-        sessionStorage.setItem("crystal_checkout_attachment", res.image_url);
-        router.push("/checkout");
-      } catch (e) {
-        alert("Failed to upload image. Please try again.");
-      } finally {
-        setIsUploading(false);
+    if (!file) {
+      setErrorMessage("Please upload an image to customize your order before proceeding.");
+      return;
+    }
+
+    setIsUploading(true);
+    setErrorMessage(null);
+    try {
+      const res = await api.uploadOrderAttachment(file);
+      sessionStorage.setItem("crystal_checkout_attachment", res.image_url);
+      
+      // Update checkout items array if present
+      const storedItems = sessionStorage.getItem("crystal_checkout_items");
+      if (storedItems) {
+        try {
+          const items = JSON.parse(storedItems);
+          if (Array.isArray(items) && items.length > 0) {
+            items[0].attachment_url = res.image_url;
+            sessionStorage.setItem("crystal_checkout_items", JSON.stringify(items));
+          }
+        } catch { /* ignore */ }
       }
-    } else {
+
       router.push("/checkout");
+    } catch (e) {
+      setErrorMessage("Failed to upload image. Please try again.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -138,26 +174,42 @@ export default function ProductAttachmentPage() {
 
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-black">
-      <div className="mx-auto max-w-4xl px-2 py-8 sm:py-5 pt-24">
+      <div className="mx-auto max-w-4xl px-2 py-8 sm:py-5 pt-24 md:mt-[100px]">
         <Link href={`/product/${productId}`} className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-neutral-600 hover:text-black">
           <FiArrowLeft /> Back to product
         </Link>
         
         <div className="mb-5">
-          <p className="text- font-medium tracking-[-1px] text-center text-[#000] flex gap-2 items-center justify-center"><RiImageCircleAiFill className="bg-[#ffea00] p-0.5 text-black"/> Customize your order</p>
+          <p className="text- font-medium tracking-[-1px] text-center text-[#000] flex gap-2 items-center justify-center">
+            <RiImageCircleAiFill className="bg-[#ffea00] p-0.5 text-black" /> Customize your order
+          </p>
           <h1 className="mt-2 text-4xl font-medium text-center tracking-tight sm:text-5xl">Attach an Image.</h1>
-          <p className="mt-4 text-sm text-center text-neutral-500">Provide an image for customization or reference. You can optionally skip this step.</p>
+          <p className="mt-4 text-sm text-center text-neutral-500 max-w-md mx-auto">
+            This is a custom crystal product. An image attachment is <span className="font-semibold text-black">required</span> to craft your personalized piece.
+          </p>
         </div>
 
         <div className="grid gap-8 md:grid-cols-[1fr_320px] rounded-3xl">
           {/* Main upload section */}
           <div className="border border-black/10 bg-white p-6 sm:p-10 shadow-sm rounded-3xl">
-            <h2 className="mb-6 text-xl font-medium text-center">Upload Image</h2>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-medium">Upload Image</h2>
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 border border-amber-200">
+                Mandatory
+              </span>
+            </div>
+
+            {errorMessage && (
+              <div className="mb-6 flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-red-600">
+                <FiAlertCircle className="text-lg shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
             
             {!preview ? (
               <div 
                 className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-10 text-center transition-colors duration-200 ${
-                  isDragging ? "border-[#ffea00] bg-[#ffea00]/5" : "border-neutral-200 bg-neutral-50"
+                  isDragging ? "border-[#ffea00] bg-[#ffea00]/5" : "border-neutral-200 bg-neutral-50 hover:border-neutral-400"
                 }`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -171,7 +223,7 @@ export default function ProductAttachmentPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[#ffea00] hover:text-black"
+                  className="rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[#ffea00] hover:text-black cursor-pointer"
                 >
                   Select File
                 </button>
@@ -193,13 +245,13 @@ export default function ProductAttachmentPage() {
                     <FiImage className="text-xl text-neutral-400" />
                     <div>
                       <p className="text-sm font-semibold truncate max-w-[200px]">{file?.name}</p>
-                      <p className="text-xs text-neutral-400">{(file?.size! / 1024 / 1024).toFixed(2)} MB</p>
+                      <p className="text-xs text-neutral-400">{((file?.size || 0) / 1024 / 1024).toFixed(2)} MB</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={clearFile}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-500 transition hover:bg-red-500 hover:text-white"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-500 transition hover:bg-red-500 hover:text-white cursor-pointer"
                     title="Remove file"
                   >
                     <FiTrash2 />
@@ -211,18 +263,11 @@ export default function ProductAttachmentPage() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row justify-end">
               <button
                 type="button"
-                onClick={() => router.push("/checkout")}
-                className="rounded-full bg-neutral-100 px-6 py-3 text-sm font-bold text-neutral-600 transition hover:bg-neutral-200"
-              >
-                Skip this step
-              </button>
-              <button
-                type="button"
                 onClick={handleSubmit}
                 disabled={!file || isUploading}
-                className="rounded-full bg-[#ffea00] px-8 py-3 text-sm font-bold text-black transition-colors hover:bg-neutral-900 hover:text-[#ffea00] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full sm:w-auto rounded-full bg-[#ffea00] px-8 py-3 text-sm font-bold text-black transition-colors hover:bg-neutral-900 hover:text-[#ffea00] disabled:opacity-40 disabled:cursor-not-allowed shadow-sm cursor-pointer"
               >
-                {isUploading ? "Uploading..." : "Submit & Continue"}
+                {isUploading ? "Uploading..." : "Submit & Continue to Checkout"}
               </button>
             </div>
           </div>
@@ -240,9 +285,18 @@ export default function ProductAttachmentPage() {
               </div>
               <div className="min-w-0">
                 <h3 className="truncate font-bold text-sm">{product.name}</h3>
-                <p className="mt-1 text-xs text-neutral-500">{product.category?.name || "Ready Stock"}</p>
+                <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-800">
+                  Custom Order
+                </span>
+                <p className="mt-1 text-xs text-neutral-500">{product.category?.name || "Custom"}</p>
                 <p className="mt-2 font-semibold text-sm">Rs. {product.price}</p>
               </div>
+            </div>
+
+            <div className="mt-6 border-t border-neutral-100 pt-4">
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                ⚠️ Custom products require a reference image for precision engraving and crafting.
+              </p>
             </div>
           </aside>
         </div>

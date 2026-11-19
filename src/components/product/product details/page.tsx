@@ -359,7 +359,7 @@ export default function ProductDetail() {
               <div className="min-w-0">
                 {/* Section header */}
                 <div className="mb-6 border-b border-neutral-200 pb-5">
-                  <h2 className="text-xl sm:text-2xl font-black tracking-tight text-neutral-900">{selectedLabel}</h2>
+                  <h2 className="text-xl sm:text-2xl font-medium tracking-[-1px] text-neutral-900">{selectedLabel}</h2>
                   <p className="mt-1 text-xs sm:text-sm text-neutral-500">{selectedDesc}</p>
                 </div>
 

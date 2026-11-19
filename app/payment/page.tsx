@@ -262,14 +262,14 @@ export default function PaymentPage() {
 
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-black">
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:py-12 pt-24">
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:py-12 pt-24 md:pt-[100px]">
         <Link href="/checkout" className="mb-10 inline-flex items-center gap-2 text-sm font-semibold text-neutral-600 hover:text-black">
           <FiArrowLeft /> Back to checkout
         </Link>
 
         <div className="mb-10">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#8d8300]">Secure Payment</p>
-          <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">Complete your payment.</h1>
+          <p className="text-xs font-bold tracking-tight text-[#8d8300]">Secure Payment</p>
+          <h1 className="mt-2 text-4xl font-medium tracking-[-1px] sm:text-5xl">Complete your payment.</h1>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_390px]">

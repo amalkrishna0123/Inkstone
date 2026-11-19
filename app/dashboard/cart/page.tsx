@@ -66,6 +66,17 @@ export default function CartPage() {
           isLocal: false,
         }))
       );
+      // Keep local cart in sync with fetched Firestore cart
+      localStorage.setItem(
+        "inkstone_local_cart",
+        JSON.stringify(
+          data.map((d) => ({
+            product: d.product,
+            quantity: d.quantity,
+          }))
+        )
+      );
+      window.dispatchEvent(new Event("inkstone-cart-change"));
       setLoading(false);
       return;
     } catch {
@@ -94,6 +105,14 @@ export default function CartPage() {
 
     setUpdatingId(item.id);
 
+    // Optimistically sync local storage for instant reactive count update
+    const local = getLocalCart();
+    const idx = local.findIndex((i) => i.product.id === item.product.id);
+    if (idx >= 0) {
+      local[idx].quantity = newQty;
+      localStorage.setItem("inkstone_local_cart", JSON.stringify(local));
+    }
+
     if (!item.isLocal) {
       try {
         await api.updateCartItem(item.id, newQty);
@@ -101,24 +120,25 @@ export default function CartPage() {
         // Silently ignore
       }
     } else {
-      // Update local storage
-      const local = getLocalCart();
-      const idx = local.findIndex((i) => i.product.id === item.product.id);
-      if (idx >= 0) {
-        local[idx].quantity = newQty;
-        localStorage.setItem("inkstone_local_cart", JSON.stringify(local));
-        window.dispatchEvent(new Event("inkstone-cart-change"));
-      }
+      window.dispatchEvent(new Event("inkstone-cart-change"));
     }
 
     setItems((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
     );
     setUpdatingId(null);
+    window.dispatchEvent(new Event("inkstone-cart-change"));
   }
 
   async function handleRemove(item: UICartItem) {
     setItems((prev) => prev.filter((i) => i.id !== item.id));
+
+    // Optimistically update localStorage immediately so count drops without delay
+    const local = getLocalCart().filter(
+      (i) => i.product.id !== item.product.id && `cart_${i.product.id}` !== item.id
+    );
+    localStorage.setItem("inkstone_local_cart", JSON.stringify(local));
+    window.dispatchEvent(new Event("inkstone-cart-change"));
 
     if (!item.isLocal) {
       try {
@@ -126,18 +146,20 @@ export default function CartPage() {
       } catch {
         // Silently ignore
       }
-    } else {
-      const local = getLocalCart().filter(
-        (i) => i.product.id !== item.product.id
-      );
-      localStorage.setItem("inkstone_local_cart", JSON.stringify(local));
-      window.dispatchEvent(new Event("inkstone-cart-change"));
     }
   }
 
   async function handleClearAll() {
+    setItems([]);
+    localStorage.removeItem("inkstone_local_cart");
+    window.dispatchEvent(new Event("inkstone-cart-change"));
+
     for (const item of items) {
-      await handleRemove(item);
+      if (!item.isLocal) {
+        try {
+          await api.removeFromCart(item.id);
+        } catch { /* ignore */ }
+      }
     }
   }
 
@@ -183,6 +205,14 @@ export default function CartPage() {
           discount_amount: discount,
         })
       );
+    }
+
+    // If cart contains custom product without an attachment, route directly to attachment page
+    const customItem = items.find((i) => i.product?.product_type !== "ready_stock");
+    const existingAttachment = sessionStorage.getItem("crystal_checkout_attachment");
+    if (customItem && !existingAttachment) {
+      router.push(`/product/${customItem.product.id}/attachment`);
+      return;
     }
 
     router.push("/checkout");

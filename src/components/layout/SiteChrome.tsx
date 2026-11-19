@@ -8,7 +8,11 @@ import CartPulseButton from "@/src/components/cart/CartPulseButton";
 export default function SiteChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAdminPanel = pathname === "/admin" || pathname.startsWith("/admin/");
-  const hideCartPulse = pathname === "/checkout" || pathname === "/payment";
+  const isAttachmentPage = pathname.includes("/attachment");
+  const hideCartPulse =
+    pathname === "/checkout" ||
+    pathname === "/payment" ||
+    isAttachmentPage;
 
   return (
     <>

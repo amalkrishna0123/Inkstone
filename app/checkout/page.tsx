@@ -128,6 +128,19 @@ export default function CheckoutPage() {
       setAttachmentUrl(storedAttachment);
     }
 
+    // 2.5 Mandatory Attachment Check: If customer has a custom product without an attachment, redirect to attachment page
+    const customItemWithoutAttachment = loadedItems.find(
+      (item) =>
+        item.product &&
+        item.product.product_type !== "ready_stock" &&
+        !item.attachment_url &&
+        !storedAttachment
+    );
+    if (customItemWithoutAttachment && customItemWithoutAttachment.product?.id) {
+      router.replace(`/product/${customItemWithoutAttachment.product.id}/attachment`);
+      return;
+    }
+
     // 3. Security check: User MUST be logged in to access checkout
     const logged = typeof window !== "undefined" && Boolean(localStorage.getItem("inkstone_access"));
     setIsLoggedIn(logged);
@@ -257,6 +270,16 @@ export default function CheckoutPage() {
 
     if (!addressForm.name || !addressForm.email || !addressForm.phone || !addressForm.address_line1 || !addressForm.city || !addressForm.postal_code) {
       setFormError("Please fill in all required delivery address fields.");
+      return;
+    }
+
+    // Verify custom product has required attachment before proceeding
+    const unattachedCustomItem = checkoutItems.find(
+      (item) => item.product?.product_type !== "ready_stock" && !item.attachment_url && !attachmentUrl
+    );
+    if (unattachedCustomItem && unattachedCustomItem.product?.id) {
+      setFormError("Custom products require an image attachment. Redirecting to upload page...");
+      router.push(`/product/${unattachedCustomItem.product.id}/attachment`);
       return;
     }
 
